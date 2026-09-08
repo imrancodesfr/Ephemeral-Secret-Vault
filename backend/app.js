@@ -22,7 +22,19 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-app.use(cors());
+// Strict CORS: only allowlisted browser origins may call this API. Requests
+// with a disallowed Origin are rejected; non-browser (curl/CLI) clients are
+// unaffected. Never use the wildcard in production — it would let any site
+// read or submit authenticated requests.
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || env.CORS_ORIGINS.includes(origin)) return callback(null, true);
+      return callback(null, false);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -60,6 +72,21 @@ app.get("/api/health", (req, res) => {
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "frontend", "index.html"));
+});
+
+// 404 for unknown API routes (JSON), keep SPA file serving for root.
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: `Not found: ${req.method} ${req.originalUrl}` });
+});
+
+// Global error handler — never leak stack traces to clients.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const status = err.status || 500;
+  if (status >= 500) console.error("[Error]", err.stack || err);
+  res.status(status).json({
+    error: status >= 500 ? "Internal server error" : err.message,
+  });
 });
 
 export default app;

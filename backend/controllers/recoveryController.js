@@ -41,7 +41,7 @@ export function getRecoveriesForUser(req, res) {
   return res.json({ recoveries: recoveryService.getRecoveriesForUser(userId) });
 }
 
-export function completeRecovery(req, res) {
+export async function completeRecovery(req, res) {
   const { id } = req.params;
   const userId = req.user.id;
 
@@ -52,7 +52,7 @@ export function completeRecovery(req, res) {
     return res.status(404).json({ error: "Recovery not found" });
   }
 
-  const result = recoveryService.completeRecovery({ recoveryId: id, userId });
+  const result = await recoveryService.completeRecovery({ recoveryId: id, userId });
   if (result.error) return res.status(400).json(result);
   return res.json(result);
 }

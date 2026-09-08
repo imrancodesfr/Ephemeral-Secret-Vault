@@ -98,7 +98,7 @@
 
     window.__renew = async function (id, btn) {
       btn.disabled = true;
-      const res = await api.post('/api/vault/renew/' + id, {});
+      const res = await api.post('/api/vault/' + encodeURIComponent(id) + '/renew', {});
       if (res.success) { toast('Vault renewed — dead man\'s switch reset', 'success'); load(); }
       else { toast(res.error || 'Renew failed', 'error'); btn.disabled = false; }
     };

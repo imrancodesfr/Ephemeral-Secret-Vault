@@ -111,7 +111,7 @@ class RecoveryService {
       });
   }
 
-  completeRecovery({ recoveryId, userId }) {
+  async completeRecovery({ recoveryId, userId }) {
     const recovery = db.recoveries.findById(recoveryId);
     if (!recovery) return { error: "Recovery not found" };
 
@@ -154,7 +154,12 @@ class RecoveryService {
     const sharesToUse = recovery.submittedShares.slice(0, vault.requiredShares);
     const shareObjects = sharesToUse.map((s) => s.shareData);
 
-    const encryptedSecret = shamirService.reconstruct(shareObjects, cryptoRow.prime, chunkLengths);
+    const encryptedSecret = shamirService.reconstruct(
+      shareObjects,
+      cryptoRow.prime,
+      chunkLengths,
+      vault.requiredShares
+    );
     const originalSecret = encryptionService.decryptFromString(encryptedSecret);
 
     // Ephemeral seal — the decrypted secret is returned to this caller exactly
@@ -178,12 +183,16 @@ class RecoveryService {
     });
 
     const recipientUser = db.users.findById(vault.recoveryRecipient);
-    notificationService.notifyRecoveryCompleted(
-      vault,
-      recoveryId,
-      vault.recoveryRecipient,
-      recipientUser?.email
-    );
+    try {
+      await notificationService.notifyRecoveryCompleted(
+        vault,
+        recoveryId,
+        vault.recoveryRecipient,
+        recipientUser?.email
+      );
+    } catch (notifyErr) {
+      console.warn("[Recovery] Notification after completion failed:", notifyErr.message);
+    }
 
     return {
       success: true,

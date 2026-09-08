@@ -6,74 +6,151 @@
   <title>Sign in - Ephemeral Vault</title>
   <link rel="stylesheet" href="js/style.css">
   <style>
-    .auth { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-    .auth-card { width: 100%; max-width: 400px; }
-    .auth-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; margin-bottom: 24px; color: var(--text); }
-    .auth-brand svg { color: var(--accent); }
-    .auth-tabs { margin-bottom: 20px; }
+    .auth-page {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 20px;
+      background: var(--bg);
+    }
+    .auth-card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      box-shadow: var(--shadow);
+    }
+    .auth-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 17px;
+      color: #fff;
+      margin-bottom: 24px;
+      transition: opacity 0.12s ease;
+    }
+    .auth-brand:hover {
+      opacity: 0.85;
+      text-decoration: none;
+    }
+    .auth-brand svg {
+      color: #60a5fa;
+    }
+    .auth-tabs {
+      display: flex;
+      background: #0d121f;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 3px;
+      margin-bottom: 22px;
+    }
+    .auth-tab-btn {
+      flex: 1;
+      padding: 9px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.12s ease;
+      text-align: center;
+    }
+    .auth-tab-btn.active {
+      background: #1e2638;
+      color: #fff;
+    }
+    .auth-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 16px;
+    }
+    .role-helper {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-top: 6px;
+      line-height: 1.45;
+    }
   </style>
 </head>
 <body>
-  <div class="auth">
+  <div class="auth-page">
     <div class="auth-card">
-      <div class="auth-brand">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        Ephemeral Vault
+      <!-- Clickable brand link that redirects to landing page -->
+      <a href="index.html" class="auth-brand" title="Back to landing page">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1.5"/></svg>
+        <span>Ephemeral Vault</span>
+      </a>
+
+      <!-- Minimalist Tab Switcher -->
+      <div class="auth-tabs">
+        <button class="auth-tab-btn active" id="tab-login" onclick="showAuth('login')">Sign in</button>
+        <button class="auth-tab-btn" id="tab-register" onclick="showAuth('register')">Create account</button>
       </div>
 
-      <div class="tabs auth-tabs">
-        <button class="tab active" id="tab-register" onclick="showAuth('register')">Register</button>
-        <button class="tab" id="tab-login" onclick="showAuth('login')">Sign in</button>
-      </div>
-
-      <div class="panel" id="panel-register">
-        <h3>Create account</h3>
-        <div class="form-group">
-          <label for="reg-name">Name</label>
-          <input id="reg-name" placeholder="Jane Doe" />
-        </div>
-        <div class="form-group">
-          <label for="reg-email">Email</label>
-          <input id="reg-email" type="email" placeholder="you@example.com" />
-        </div>
-        <div class="form-group">
-          <label for="reg-password">Password</label>
-          <input id="reg-password" type="password" placeholder="••••••••" />
-          <p class="pick-note">Use 8–64 characters with at least one letter, one number, and one special character.</p>
-        </div>
-        <div class="form-group">
-          <label for="reg-role">Role</label>
-          <select id="reg-role">
-            <option value="OWNER">Owner</option>
-            <option value="GUARDIAN">Guardian</option>
-            <option value="RECIPIENT">Recovery Recipient</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="reg-wallet">Wallet address (optional)</label>
-          <input id="reg-wallet" placeholder="0x..." />
-        </div>
-        <button class="btn full" onclick="register()">Register</button>
-      </div>
-
-      <div class="panel hidden" id="panel-login">
+      <!-- Sign In Panel -->
+      <div id="panel-login">
         <h3>Welcome back</h3>
         <div class="form-group">
-          <label for="login-email">Email</label>
-          <input id="login-email" type="email" placeholder="you@example.com" />
+          <label for="login-email">Email Address</label>
+          <input id="login-email" type="email" placeholder="name@example.com" autofocus />
         </div>
         <div class="form-group">
           <label for="login-password">Password</label>
           <input id="login-password" type="password" placeholder="••••••••" />
         </div>
-        <button class="btn full" onclick="login()">Sign in</button>
+        <button class="btn full" onclick="login()" style="margin-top:8px;padding:10px">Sign in</button>
       </div>
 
-      <div id="result"></div>
+      <!-- Register Panel -->
+      <div id="panel-register" class="hidden">
+        <h3>Create an account</h3>
+        <div class="form-group">
+          <label for="reg-name">Full Name</label>
+          <input id="reg-name" placeholder="Alice Smith" />
+        </div>
+        <div class="form-group">
+          <label for="reg-email">Email Address</label>
+          <input id="reg-email" type="email" placeholder="name@example.com" />
+        </div>
+        <div class="form-group">
+          <label for="reg-password">Password</label>
+          <input id="reg-password" type="password" placeholder="••••••••" />
+          <p class="pick-note">8–64 chars with at least one letter, number, and special character.</p>
+        </div>
+        <div class="form-group">
+          <label for="reg-role">Role</label>
+          <select id="reg-role" onchange="updateRoleHelper(this.value)">
+            <option value="OWNER">Vault Owner (Creates &amp; renews secrets)</option>
+            <option value="GUARDIAN">Guardian (Holds a key shard for recovery)</option>
+            <option value="RECIPIENT">Recovery Recipient (Designated beneficiary)</option>
+          </select>
+          <div id="role-helper-text" class="role-helper">
+            Owner: Creates secret vaults and maintains liveness via heartbeat renewals.
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="reg-wallet">Wallet Address (Optional)</label>
+          <input id="reg-wallet" placeholder="0x..." />
+        </div>
+        <button class="btn full" onclick="register()" style="margin-top:8px;padding:10px">Create account</button>
+      </div>
 
-      <p class="dim mt-16" style="text-align:center"><a href="index.html">Back to home</a></p>
+      <div id="result" style="margin-top:14px"></div>
+
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);text-align:center">
+        <a href="index.html" style="font-size:14px;color:var(--text-muted)">← Back to Landing Page</a>
+      </div>
     </div>
   </div>
+
   <script src="js/api.js"></script>
   <script type="module">
     import { toast, getUser } from "./js/ui.js";
@@ -90,8 +167,20 @@
       document.getElementById('panel-login').classList.toggle('hidden', isRegister);
       document.getElementById('tab-register').classList.toggle('active', isRegister);
       document.getElementById('tab-login').classList.toggle('active', !isRegister);
+      document.getElementById('result').innerHTML = '';
     }
     window.showAuth = showAuth;
+
+    window.updateRoleHelper = function(role) {
+      const el = document.getElementById('role-helper-text');
+      if (role === 'OWNER') {
+        el.textContent = 'Owner: Creates secret vaults and maintains liveness via heartbeat renewals.';
+      } else if (role === 'GUARDIAN') {
+        el.textContent = 'Guardian: Entrusted with 1 mathematical key shard. Submits share during recovery.';
+      } else if (role === 'RECIPIENT') {
+        el.textContent = 'Recipient: Beneficiary who initiates recovery upon expiry and receives the secret.';
+      }
+    };
 
     function showRes(res, ok) {
       if (res.success) {
@@ -153,8 +242,6 @@
         const next = params.get('next');
         setTimeout(() => { window.location.href = next && !next.includes('login.html') ? next : 'dashboard.html'; }, 600);
       } else {
-        // Unified message: the server returns the same error whether the email
-        // does not exist or the password is wrong, to prevent account probing.
         const msg = res.error || 'Sign in failed';
         const isLocked = /Too many failed attempts/.test(msg);
         toast(msg, 'error');

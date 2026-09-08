@@ -1,8 +1,12 @@
 import app from "./app.js";
 import env from "./config/environment.js";
 import expiryMonitor from "./blockchain/ExpiryMonitor.js";
+import { bootstrapAdmin } from "./controllers/authController.js";
 
 const PORT = env.PORT;
+
+// Provision the privileged admin account (env-configured) if one does not exist.
+bootstrapAdmin();
 
 // Dead man's switch: periodic checks plus a boot-time catch-up scan for any
 // vault that expired while the process was down. Both are idempotent.

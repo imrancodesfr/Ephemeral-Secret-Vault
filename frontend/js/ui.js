@@ -79,9 +79,24 @@ export function copyText(text) {
 
 export function idWithCopy(id, labelPrefix) {
   if (!id) return '';
+  const safeId = String(id).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[ch]);
   const label = id.length > 18 ? id.slice(0, 9) + '…' + id.slice(-6) : id;
-  return '<span class="id-copy" onclick="window.__copy(\'' + id + '\')" title="click to copy">' + (labelPrefix || '') + label + '</span>';
+  return '<span class="id-copy" data-copy-id="' + safeId + '" title="click to copy" role="button">' + (labelPrefix || '') + label + '</span>';
 }
+
+// Event delegation: one listener for every .id-copy element (safer than inline onclick).
+export function initIdCopyDelegation() {
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest && e.target.closest('.id-copy');
+    if (el && el.dataset.copyId) copyText(el.dataset.copyId);
+  });
+}
+
+// Auto-register once so every page that renders .id-copy spans works without a
+// page-specific call — even pages that still set window.__copy.
+try { initIdCopyDelegation(); } catch (e) { /* DOM not ready is fine; late renders still work */ }
 
 export function showBanner(elemId, message, ok) {
   const b = document.getElementById(elemId);

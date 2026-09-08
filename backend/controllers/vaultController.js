@@ -20,6 +20,9 @@ export function createVault(req, res) {
   if (typeof secret !== "string" || secret.length === 0) {
     return res.status(400).json({ error: "secret must be a non-empty string" });
   }
+  if (secret.length > 100000) {
+    return res.status(400).json({ error: "secret is too large (max 100KB) — protects against memory exhaustion" });
+  }
   if (!Number.isInteger(totalShares) || totalShares < 2) {
     return res.status(400).json({ error: "totalShares must be an integer >= 2" });
   }
@@ -68,16 +71,20 @@ export function createVault(req, res) {
     return res.status(400).json({ error: "recoveryRecipient does not match a registered user" });
   }
 
-  const result = vaultService.createVault({
-    secret,
-    totalShares,
-    requiredShares,
-    expiryMinutes: providedExpiry,
-    ownerId,
-    guardians,
-    recoveryRecipient: finalRecipient,
-  });
-
+  let result;
+  try {
+    result = vaultService.createVault({
+      secret,
+      totalShares,
+      requiredShares,
+      expiryMinutes: providedExpiry,
+      ownerId,
+      guardians,
+      recoveryRecipient: finalRecipient,
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || "Failed to create vault" });
+  }
   const vault = result.vault;
   const oneTimeShares = result.shares;
 
@@ -133,14 +140,34 @@ export function getVaultStatus(req, res) {
   return res.json(status);
 }
 
-export function activateRecovery(req, res) {
+export async function activateRecovery(req, res) {
   const vault = db.vaults.findById(req.params.id);
   if (!vault) return res.status(404).json({ error: "Vault not found" });
-  if (vault.ownerId !== req.user.id) {
-    return res.status(403).json({ error: "Only the vault owner may trigger recovery" });
+
+  const userId = req.user.id;
+  const isOwner = vault.ownerId === userId;
+  const isRecipient = vault.recoveryRecipient === userId;
+  const isGuardian = !!db.guardians.findByUserIdAndVaultId(userId, vault.id);
+  const now = Date.now();
+  const isExpired = now > vault.expiryTimestamp || vault.status === "RECOVERY_MODE";
+
+  if (!isOwner && !isRecipient && !(isGuardian && isExpired)) {
+    return res.status(403).json({ error: "Only the vault owner, recovery recipient, or an authorized guardian (upon expiry) may trigger recovery" });
   }
-  const result = vaultService.activateRecovery(req.params.id);
-  if (result.error) return res.status(400).json(result);
+
+  const result = await vaultService.activateRecovery(req.params.id);
+  if (result.error) {
+    if (result.recoveryId) {
+      return res.json({
+        success: true,
+        alreadyActive: true,
+        message: result.error,
+        recoveryId: result.recoveryId,
+        recovery: db.recoveries.findById(result.recoveryId),
+      });
+    }
+    return res.status(400).json(result);
+  }
   return res.json(result);
 }
 

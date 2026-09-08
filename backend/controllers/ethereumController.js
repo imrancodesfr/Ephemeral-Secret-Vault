@@ -67,7 +67,12 @@ export function getContractSource(req, res) {
   if (!file) return res.status(404).json({ error: `Contract '${name}' not found. Available: ${CONTRACT_FILES.join(", ")}` });
 
   const sourcePath = path.join(__dirname, "..", "ethereum", "contracts", file);
-  const source = fs.readFileSync(sourcePath, "utf8");
+  let source;
+  try {
+    source = fs.readFileSync(sourcePath, "utf8");
+  } catch (err) {
+    return res.status(404).json({ error: `Could not read contract source at ${file}` });
+  }
 
   return res.json({
     file,

@@ -3,78 +3,527 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ephemeral Secret Vault</title>
+  <title>Ephemeral Secret Vault — Zero-Knowledge Social Recovery &amp; Dead Man's Switch</title>
   <link rel="stylesheet" href="js/style.css">
+  <style>
+    /* Minimalist human-crafted layout overrides */
+    .hero-container {
+      width: 100%;
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    .sandbox-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin: 24px auto;
+      max-width: 860px;
+    }
+    .sandbox-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin: 16px 0;
+    }
+    @media (max-width: 768px) {
+      .sandbox-grid { grid-template-columns: 1fr; }
+    }
+    .sandbox-card {
+      background: #0b0f19;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      cursor: pointer;
+      transition: border-color 0.12s ease;
+      text-align: left;
+    }
+    .sandbox-card.selected {
+      border-color: #6366f1;
+      background: rgba(99, 102, 241, 0.08);
+    }
+    .faq-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      max-width: 1080px;
+      margin: 0 auto 50px;
+      padding: 0 24px;
+    }
+    @media (max-width: 768px) {
+      .faq-grid { grid-template-columns: 1fr; }
+    }
+    .faq-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+    }
+    .faq-item h4 {
+      font-size: 16.5px;
+      color: #fff;
+      margin-bottom: 8px;
+      font-weight: 650;
+    }
+    .faq-item p {
+      font-size: 14.5px;
+      line-height: 1.6;
+      color: var(--text-muted);
+    }
+    .landing-footer {
+      border-top: 1px solid var(--border);
+      padding: 36px 24px;
+      text-align: center;
+      background: var(--bg-surface);
+      color: var(--text-dim);
+      font-size: 14px;
+    }
+    .landing-footer a { margin: 0 10px; color: var(--text-muted); }
+    .landing-footer a:hover { color: #fff; }
+  </style>
 </head>
 <body>
   <div class="landing">
+    <!-- Header -->
     <header class="landing-header">
-      <div class="brand">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        Ephemeral Vault
-      </div>
+      <a href="index.html" class="brand" style="text-decoration:none">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1.5"/></svg>
+        <span>Ephemeral Vault</span>
+      </a>
       <nav class="landing-nav">
-        <a href="dashboard.html">Dashboard</a>
+        <a href="#how-it-works">Lifecycle</a>
+        <a href="#roles">Guardians &amp; Recipients</a>
+        <a href="#keys-guide">Keys Guide</a>
+        <a href="#demo-sandbox">Sandbox</a>
+        <a href="dashboard.html" class="btn btn-secondary">Dashboard</a>
         <a href="login.html" class="btn">Sign in</a>
       </nav>
     </header>
 
+    <!-- Hero Section -->
     <section class="hero">
-      <div class="hero-badge">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        Secret sharing with an auditable lifecycle
+      <div class="hero-container">
+        <div class="hero-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Zero-Knowledge Ephemeral Secret Recovery Protocol
+        </div>
+        <h1>Never Lose A Secret.<br>Never Trust A Single Point Of Failure.</h1>
+        <p>Cryptographic secret sharing via <b>Shamir's (k-of-n) scheme</b>, guardian-held shares, and an automated <b>Dead Man's Switch</b> — recorded in a tamper-evident Proof-of-Work blockchain audit trail.</p>
+        
+        <div class="hero-actions">
+          <a href="create-vault.html" class="btn" style="padding:10px 22px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            Create Vault
+          </a>
+          <a href="recovery.html" class="btn btn-secondary" style="padding:10px 20px">
+            Recovery Vault
+          </a>
+          <a href="#demo-sandbox" class="btn btn-secondary" style="padding:10px 20px">
+            Try Sandbox ↓
+          </a>
+        </div>
+
+        <div class="hero-stats">
+          <div class="item">
+            <div class="value">k-of-n</div>
+            <div class="label">Threshold Cryptography</div>
+          </div>
+          <div class="item">
+            <div class="value">AES-256</div>
+            <div class="label">Symmetric GCM Cipher</div>
+          </div>
+          <div class="item">
+            <div class="value">Zero Custody</div>
+            <div class="label">SHA-256 Commitments</div>
+          </div>
+          <div class="item">
+            <div class="value">PoW Ledger</div>
+            <div class="label">Audit Trail</div>
+          </div>
+          <div class="item">
+            <div class="value">1-Time Seal</div>
+            <div class="label">Ephemeral Destruction</div>
+          </div>
+        </div>
       </div>
-      <h1>Store secrets. Recover securely. Never trust a single point of failure.</h1>
-      <p>Threat-secret splitting via Shamir Secret Sharing, guardian-held shares, and an expiry-driven dead man's switch — with every lifecycle event recorded in an immutable, tamper-evident audit trail.</p>
-      <div class="hero-actions">
-        <a href="create-vault.html" class="btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-          Create a vault
-        </a>
-        <a href="login.html" class="btn btn-secondary">Sign in</a>
-      </div>
-      <div class="hero-stats">
-        <div class="item"><div class="value">2-of-3</div><div class="label">Threshold shares</div></div>
-        <div class="item"><div class="value">AES-256</div><div class="label">Encryption</div></div>
-        <div class="item"><div class="value">SHA-256</div><div class="label">Hashing</div></div>
-        <div class="item"><div class="value">PoW</div><div class="label">Mining</div></div>
-      </div>
-      <div class="hero-note">Academic demo — the blockchain, Ethereum and Hyperledger Fabric integrations run in simulation mode by default, and every page that relies on them says so.</div>
     </section>
 
-    <div class="feature-heading">How it works</div>
-    <section class="feature-grid">
-      <div class="feature">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        <h3>Guardian-Held Shares</h3>
-        <p>The server keeps only one-way commitments to each share — guardians hold the real shares and reveal them only during recovery.</p>
+    <!-- SECTION 1: CRYPTOGRAPHIC LIFECYCLE (BALANCED 2-PHASE ARCHITECTURE) -->
+    <section class="crypto-journey" id="how-it-works">
+      <div class="section-title">
+        <h2>Cryptographic Lifecycle</h2>
+        <p>A structured, end-to-end security pipeline from client-side ingestion to zero-custody distribution and one-time ephemeral recovery.</p>
       </div>
-      <div class="feature">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 11V7a4 4 0 1 1 8 0v4"/><path d="M5 11h14v9H5z"/></svg>
-        <h3>Shamir Secret Sharing</h3>
-        <p>Encrypted secrets split into shares; a threshold of k-of-n shares reconstructs the secret.</p>
+
+      <!-- Phase 1: Ingestion & Distributed Custody (4 Balanced Columns) -->
+      <div>
+        <span class="phase-tag">Phase I · Secret Splitting &amp; Distributed Custody</span>
+        <div class="flow-phase1-grid">
+          <div class="flow-step-card">
+            <span class="flow-step-num">Step 01</span>
+            <h3>Client-Side Encryption</h3>
+            <p>Your raw secret (seed phrase, private key, password) is encrypted via AES-256-GCM. Plaintext is never written to disk or database.</p>
+          </div>
+
+          <div class="flow-step-card">
+            <span class="flow-step-num">Step 02</span>
+            <h3>Shamir (k-of-n) Splitting</h3>
+            <p>The ciphertext key is mathematically partitioned into <code>n</code> distinct polynomial coordinates <code>(x, y)</code> over a finite Galois field.</p>
+          </div>
+
+          <div class="flow-step-card">
+            <span class="flow-step-num">Step 03</span>
+            <h3>Zero-Knowledge Custody</h3>
+            <p>The server stores <b>only SHA-256 hash commitments</b>. Shards are delivered to guardians privately and wiped from server memory.</p>
+          </div>
+
+          <div class="flow-step-card">
+            <span class="flow-step-num">Step 04</span>
+            <h3>PoW Blockchain Notary</h3>
+            <p>Vault creation, threshold configuration, and renewal heartbeats are mined into an immutable Proof-of-Work block with Merkle verification.</p>
+          </div>
+        </div>
       </div>
-      <div class="feature">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V4h6v16M20 20H14V8h6v12"/></svg>
-        <h3>Audit Trail</h3>
-        <p>Every action — create, renew, expire, recover — is appended to a proof-of-work ledger that detects tampering.</p>
-      </div>
-      <div class="feature">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-        <h3>Dead Man's Switch</h3>
-        <p>Failure to renew triggers recovery mode automatically after expiry.</p>
-      </div>
-      <div class="feature">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M6 18l2-2"/><circle cx="12" cy="12" r="3"/></svg>
-        <h3>Guardian Governance</h3>
-        <p>Recovery requires a threshold of guardian-held shares — no single holder, not even the server, can unlock the secret alone.</p>
-      </div>
-      <div class="feature">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15l2 2 4-4"/></svg>
-        <h3>Document Notary</h3>
-        <p>SHA-256 fingerprints notarized in the ledger confirm a document is unmodified over time.</p>
+
+      <!-- Phase 2: Expiry & Ephemeral Recovery (3 Balanced Columns) -->
+      <div style="margin-top:20px">
+        <span class="phase-tag">Phase II · Automated Recovery &amp; Ephemeral Burn</span>
+        <div class="flow-phase2-grid">
+          <div class="flow-step-card">
+            <span class="flow-step-num">Step 05</span>
+            <h3>Dead Man's Switch</h3>
+            <p>The owner must periodically trigger "Renew" (heartbeat). If unresponsive past expiry, the vault automatically enters <code>RECOVERY_MODE</code>.</p>
+          </div>
+
+          <div class="flow-step-card">
+            <span class="flow-step-num">Step 06</span>
+            <h3>Threshold Verification</h3>
+            <p>Guardians submit their shards. Once <code>k</code> valid shares matching on-chain commitments arrive, Lagrange polynomial interpolation reconstructs the secret.</p>
+          </div>
+
+          <div class="flow-step-card">
+            <span class="flow-step-num">Step 07</span>
+            <h3>Ephemeral Destruction</h3>
+            <p>The secret is revealed to the authorized recipient <b>exactly once</b>. The ciphertext, wrapped keys, and share files are permanently incinerated.</p>
+          </div>
+        </div>
       </div>
     </section>
+
+    <!-- SECTION 2: ROLES EXPLAINED (GUARDIAN vs RECIPIENT vs OWNER) -->
+    <section class="crypto-journey" id="roles">
+      <div class="section-title">
+        <h2>Entities &amp; Roles</h2>
+        <p>Strict separation of concerns ensures that no single entity — not even the server — possesses enough authority to compromise your vault.</p>
+      </div>
+
+      <div class="roles-grid">
+        <!-- Role 1: Owner -->
+        <div class="role-card owner-card">
+          <div class="role-header">
+            <span class="role-pill role-owner">Vault Owner</span>
+            <div class="role-title">The Sovereign</div>
+          </div>
+          <p class="role-desc">Creator of the vault and original holder of the secret.</p>
+          <ul class="role-duties">
+            <li><strong>Threshold Configuration:</strong> Sets total guardians (N) and recovery threshold (K).</li>
+            <li><strong>Dead Man's Switch:</strong> Defines the time-to-live deadline interval for the vault.</li>
+            <li><strong>Heartbeat Renewals:</strong> Sends periodic &ldquo;Renew&rdquo; heartbeats to keep the vault active.</li>
+            <li><strong>Emergency Action:</strong> Can trigger immediate recovery if an emergency occurs.</li>
+            <li><strong>Zero Self-Custody:</strong> Cannot hold a guardian share, eliminating centralized risk.</li>
+          </ul>
+        </div>
+
+        <!-- Role 2: Guardian -->
+        <div class="role-card guardian-card">
+          <div class="role-header">
+            <span class="role-pill role-guardian">Guardian</span>
+            <div class="role-title">The Key Trustee</div>
+          </div>
+          <p class="role-desc">A trusted contact, advisor, family member, or independent device.</p>
+          <ul class="role-duties">
+            <li><strong>Unique Math Shard:</strong> Holds exactly 1 Shamir polynomial coordinate <code>(x, y)</code>.</li>
+            <li><strong>Zero Knowledge:</strong> A single shard reveals 0% of the underlying secret on its own.</li>
+            <li><strong>Expiry Activation:</strong> Submits their shard only when notified of vault expiration.</li>
+            <li><strong>ZK Hash Verification:</strong> Server validates each shard against recorded SHA-256 commitments.</li>
+          </ul>
+        </div>
+
+        <!-- Role 3: Recipient -->
+        <div class="role-card recipient-card">
+          <div class="role-header">
+            <span class="role-pill role-recipient">Recovery Recipient</span>
+            <div class="role-title">The Beneficiary</div>
+          </div>
+          <p class="role-desc">The designated heir or backup account authorized to receive the secret.</p>
+          <ul class="role-duties">
+            <li><strong>Designated Heir:</strong> Explicitly assigned by the owner during initial vault creation.</li>
+            <li><strong>Trigger Recovery:</strong> Authorized to initiate recovery once the Dead Man's Switch expires.</li>
+            <li><strong>Live Tracking:</strong> Monitors guardian shard submissions in real-time on the recovery dashboard.</li>
+            <li><strong>Sole Beneficiary:</strong> The only entity who receives the decrypted secret before permanent purge.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: HOW KEYS WORK (EXACT 2x2 SYMMETRICAL GRID) -->
+    <section class="crypto-journey" id="keys-guide">
+      <div class="section-title">
+        <h2>How Cryptographic Keys Work</h2>
+        <p>A breakdown of the cryptographic constructs: Master Cipher, Shamir Shards, and Zero-Knowledge Commitments.</p>
+      </div>
+
+      <!-- Exactly 2 columns by 2 rows -->
+      <div class="keys-grid">
+        <div class="card">
+          <h3 style="color:#818cf8;margin-bottom:10px">1. Master Symmetric Cipher (AES-256-GCM)</h3>
+          <p>When you input your secret, an authenticated 256-bit AES key is generated in memory. The plaintext is encrypted with an initialization vector (IV) and authentication tag. Without the exact key, brute-forcing is computationally infeasible.</p>
+          <div class="share-box" style="margin-top:10px">
+            IV (12 bytes) + Ciphertext + AuthTag (16 bytes)
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="color:#60a5fa;margin-bottom:10px">2. Guardian Share Keys (x, y)</h3>
+          <p>The AES key is treated as the secret term $a_0$ in a polynomial:
+          <br><code style="color:#93c5fd">f(x) = a_0 + a_1·x + ... + a_{k-1}·x^{k-1} \pmod p</code>
+          <br>Each guardian holds point $(x_i, y_i)$. Any $k-1$ points reveal zero information about the secret, but any $k$ points reconstruct it perfectly.</p>
+          <div class="share-box" style="margin-top:10px">
+            {"x": 1, "y": [142, 95, 201, 88, ...]}
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="color:#34d399;margin-bottom:10px">3. Zero-Knowledge Hash Commitments</h3>
+          <p>To verify guardian submissions without storing shares on the server, the server computes:
+          <br><code style="color:#6ee7b7">Commitment = SHA-256(JSON.stringify(share))</code>
+          <br>Only this one-way hash is kept. When a guardian submits, their share is hashed and compared to this immutable commitment.</p>
+          <div class="share-box" style="margin-top:10px">
+            64-char hexadecimal SHA-256 digest
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="color:#fbbf24;margin-bottom:10px">4. Ephemeral Destruction</h3>
+          <p>Traditional password vaults retain encrypted blobs indefinitely. Ephemeral Vault does not. The moment recovery completes, ciphertext, wrapped keys, and share artifacts are wiped from storage, guaranteeing forward secrecy.</p>
+          <div class="share-box" style="margin-top:10px">
+            Status: RECOVERED · Ciphertext Purged Permanently
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 4: IN-BROWSER SIMULATOR SANDBOX -->
+    <section class="crypto-journey" id="demo-sandbox">
+      <div class="section-title">
+        <h2>Interactive Cryptographic Sandbox</h2>
+        <p>Test Shamir Secret Sharing directly in your browser. Split a secret into 3 shares (2-of-3 threshold), and reconstruct with any 2 shares.</p>
+      </div>
+
+      <div class="sandbox-container">
+        <div class="form-group">
+          <label>Test Secret to Partition:</label>
+          <input type="text" id="sim-secret" value="bitcoin-wallet-seed-phrase-alpha-bravo-charlie" placeholder="Enter any secret message..." />
+        </div>
+
+        <div style="display:flex;gap:10px;margin:14px 0;flex-wrap:wrap">
+          <button class="btn" onclick="runSimulationSplit()">Split Secret (2-of-3 Threshold)</button>
+          <button class="btn btn-secondary" onclick="resetSimulator()">Reset</button>
+        </div>
+
+        <div id="sim-shares-container" class="hidden">
+          <p class="pick-note" style="margin:14px 0 6px">Click any 2 shares to test Lagrange polynomial reconstruction:</p>
+          <div class="sandbox-grid" id="sim-shares-list"></div>
+
+          <div style="display:flex;gap:12px;align-items:center;margin-top:14px">
+            <button class="btn btn-secondary" id="sim-recon-btn" onclick="runSimulationReconstruct()" disabled>Reconstruct Secret</button>
+            <span id="sim-select-count" class="muted" style="font-size:12.5px">0 of 2 selected</span>
+          </div>
+
+          <div id="sim-result" style="margin-top:16px"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 5: FAQs -->
+    <section class="crypto-journey">
+      <div class="section-title">
+        <h2>Frequently Asked Questions</h2>
+        <p>Key technical details regarding security, threshold mechanics, and data protection.</p>
+      </div>
+
+      <div class="faq-grid">
+        <div class="faq-item">
+          <h4>Can the server decrypt my secret?</h4>
+          <p>No. Plaintext is encrypted via AES-256-GCM before splitting. The server only holds ciphertext and one-way SHA-256 commitments. Without the threshold of guardian shares, decryption is mathematically impossible.</p>
+        </div>
+        <div class="faq-item">
+          <h4>Can one compromised guardian steal my secret?</h4>
+          <p>No. Shamir Secret Sharing guarantees information-theoretic security: holding 1 share (or any number below <code>k</code>) reveals mathematically zero information about the secret.</p>
+        </div>
+        <div class="faq-item">
+          <h4>What happens if the owner does not renew?</h4>
+          <p>The Dead Man's Switch triggers. When the expiry timestamp passes, the background Expiry Monitor moves the vault to <code>RECOVERY_MODE</code> and alerts guardians and the recovery recipient.</p>
+        </div>
+        <div class="faq-item">
+          <h4>What if one guardian is offline or loses their share?</h4>
+          <p>Because the threshold is <code>k-of-n</code> (e.g. 2-of-3), <code>n - k</code> guardians can be unavailable, and the remaining guardians can still successfully recover the secret.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="landing-footer">
+      <div style="margin-bottom:12px">
+        <span style="color:#fff;font-weight:600">Ephemeral Secret Vault</span> — Decentralized Cryptographic Dead Man's Switch
+      </div>
+      <div>
+        <a href="dashboard.html">Dashboard</a>
+        <a href="create-vault.html">Create Vault</a>
+        <a href="vaults.html">My Vaults</a>
+        <a href="recovery.html">Recovery Vault</a>
+        <a href="blockchain.html">Blockchain Explorer</a>
+        <a href="login.html">Sign In</a>
+      </div>
+      <div style="margin-top:14px;font-size:12px;color:var(--text-dim)">
+        Academic Demonstration &middot; Shamir Secret Sharing &middot; AES-256 &middot; Proof-of-Work
+      </div>
+    </footer>
   </div>
+
+  <!-- In-browser Shamir Simulator Script -->
+  <script>
+    const PRIME = 257;
+    let generatedShares = [];
+    let selectedIndices = new Set();
+
+    function runSimulationSplit() {
+      const secret = document.getElementById('sim-secret').value.trim();
+      if (!secret) return alert('Enter a secret first!');
+
+      const bytes = new TextEncoder().encode(secret);
+      const n = 3;
+
+      const polynomials = [];
+      for (let i = 0; i < bytes.length; i++) {
+        const a1 = Math.floor(Math.random() * 255) + 1;
+        polynomials.push({ a0: bytes[i], a1 });
+      }
+
+      generatedShares = [];
+      for (let x = 1; x <= n; x++) {
+        const y = [];
+        for (let i = 0; i < bytes.length; i++) {
+          const val = (polynomials[i].a0 + polynomials[i].a1 * x) % PRIME;
+          y.push(val);
+        }
+        generatedShares.push({ x, y: y.slice(0, 8), fullY: y });
+      }
+
+      selectedIndices.clear();
+      renderSimulationShares();
+      document.getElementById('sim-shares-container').classList.remove('hidden');
+      document.getElementById('sim-result').innerHTML = '';
+      updateSelectCount();
+    }
+
+    function renderSimulationShares() {
+      const container = document.getElementById('sim-shares-list');
+      const guardianNames = ["Guardian 1", "Guardian 2", "Guardian 3"];
+      container.innerHTML = generatedShares.map((s, i) => {
+        const isSel = selectedIndices.has(i);
+        return `
+          <div class="sandbox-card ${isSel ? 'selected' : ''}" onclick="toggleSelectShare(${i})">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <strong style="color:#fff;font-size:13px">${guardianNames[i]}</strong>
+              <span class="role-pill role-guardian" style="font-size:10px">Shard x=${s.x}</span>
+            </div>
+            <div class="share-box" style="font-size:11px;padding:6px 8px">
+              {"x": ${s.x}, "y": [${s.y.join(', ')}...]}
+            </div>
+            <div style="margin-top:6px;font-size:11px;color:${isSel ? '#818cf8' : 'var(--text-dim)'}">
+              ${isSel ? '✔ Selected' : '+ Click to select'}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function toggleSelectShare(idx) {
+      if (selectedIndices.has(idx)) {
+        selectedIndices.delete(idx);
+      } else {
+        if (selectedIndices.size >= 2) {
+          const first = selectedIndices.values().next().value;
+          selectedIndices.delete(first);
+        }
+        selectedIndices.add(idx);
+      }
+      renderSimulationShares();
+      updateSelectCount();
+    }
+
+    function updateSelectCount() {
+      const count = selectedIndices.size;
+      document.getElementById('sim-select-count').textContent = `${count} of 2 selected`;
+      const btn = document.getElementById('sim-recon-btn');
+      btn.disabled = count !== 2;
+    }
+
+    function runSimulationReconstruct() {
+      if (selectedIndices.size !== 2) return;
+      const idxs = Array.from(selectedIndices);
+      const s1 = generatedShares[idxs[0]];
+      const s2 = generatedShares[idxs[1]];
+
+      const x1 = s1.x;
+      const x2 = s2.x;
+      const y1 = s1.fullY;
+      const y2 = s2.fullY;
+
+      function modInverse(a, m) {
+        a = ((a % m) + m) % m;
+        for (let x = 1; x < m; x++) {
+          if ((a * x) % m === 1) return x;
+        }
+        return 1;
+      }
+      const delta = (x2 - x1);
+      const invDelta = modInverse(delta, PRIME);
+
+      const reconstructedBytes = [];
+      for (let i = 0; i < y1.length; i++) {
+        let num = (y1[i] * x2 - y2[i] * x1);
+        num = ((num % PRIME) + PRIME) % PRIME;
+        const origByte = (num * invDelta) % PRIME;
+        reconstructedBytes.push(origByte);
+      }
+
+      const decoded = new TextDecoder().decode(new Uint8Array(reconstructedBytes));
+      
+      document.getElementById('sim-result').innerHTML = `
+        <div class="card" style="border-color:#059669;background:rgba(5,150,105,0.06);margin-top:12px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span class="role-pill role-recipient">Reconstructed</span>
+            <span class="mono" style="color:#a7f3d0;font-size:11px">Via Shards ${s1.x} &amp; ${s2.x}</span>
+          </div>
+          <div class="mono" style="font-size:13.5px;color:#34d399;font-weight:600;word-break:break-all;padding:8px 10px;background:#0c101a;border-radius:4px;border:1px solid var(--border)">
+            ${decoded}
+          </div>
+        </div>
+      `;
+    }
+
+    function resetSimulator() {
+      document.getElementById('sim-secret').value = 'bitcoin-wallet-seed-phrase-alpha-bravo-charlie';
+      document.getElementById('sim-shares-container').classList.add('hidden');
+      selectedIndices.clear();
+      generatedShares = [];
+    }
+  </script>
 </body>
 </html>

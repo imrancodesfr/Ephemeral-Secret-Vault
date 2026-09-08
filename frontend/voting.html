@@ -125,25 +125,33 @@
     document.getElementById('voteProposalId').addEventListener('change', reflectOptions);
 
     window.createProposal = async function () {
+      const title = document.getElementById('propTitle').value.trim();
+      if (!title) { show({ error: 'A title is required to create a proposal' }); return; }
+      const opts = document.getElementById('propOptions').value.split(',').map(s => s.trim()).filter(Boolean);
+      if (opts.length < 2) { show({ error: 'Provide at least two comma-separated options (e.g. YES, NO)' }); return; }
       show(await api.post('/api/voting/proposal', {
-        title: document.getElementById('propTitle').value,
+        title,
         description: document.getElementById('propDesc').value,
-        options: document.getElementById('propOptions').value.split(',').map(s => s.trim()).filter(Boolean),
+        options: opts,
         vaultId: document.getElementById('propVaultId').value || undefined,
       }));
       load();
     };
 
     window.castVote = async function () {
+      const proposalId = document.getElementById('voteProposalId').value;
+      if (!proposalId) { show({ error: 'Pick a proposal to vote on first' }); return; }
       show(await api.post('/api/voting/vote', {
-        proposalId: document.getElementById('voteProposalId').value,
+        proposalId,
         option: document.getElementById('voteOption').value,
       }));
       load();
     };
 
     window.viewResult = async function () {
-      show(await api.get('/api/voting/' + encodeURIComponent(document.getElementById('resultProposalId').value) + '/result'));
+      const proposalId = document.getElementById('resultProposalId').value;
+      if (!proposalId) { show({ error: 'Pick a proposal to view results for first' }); return; }
+      show(await api.get('/api/voting/' + encodeURIComponent(proposalId) + '/result'));
     };
 
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }

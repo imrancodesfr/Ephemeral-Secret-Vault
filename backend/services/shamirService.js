@@ -77,9 +77,24 @@ class ShamirService {
     return { shares, threshold: requiredShares, prime: Number(PRIME), chunkLengths };
   }
 
-  reconstruct(shares, prime, chunkLengths) {
+  reconstruct(shares, prime, chunkLengths, threshold) {
     if (!shares || shares.length < 2) {
       throw new Error("Need at least 2 shares to reconstruct");
+    }
+    // Deduplicate by share x-coordinate so a single reused share cannot satisfy
+    // the threshold by being submitted multiple times.
+    const seenX = new Set();
+    const unique = [];
+    for (const s of shares) {
+      if (!s || typeof s.x !== "number" || seenX.has(s.x)) continue;
+      seenX.add(s.x);
+      unique.push(s);
+    }
+    if (unique.length < 2) {
+      throw new Error("Need at least 2 distinct shares to reconstruct");
+    }
+    if (typeof threshold === "number" && threshold > 0 && unique.length < threshold) {
+      throw new Error(`Need at least ${threshold} distinct shares to reconstruct (received ${unique.length})`);
     }
 
     const p = BigInt(prime);
@@ -87,7 +102,7 @@ class ShamirService {
     const hexChunks = [];
 
     for (let c = 0; c < chunkCount; c++) {
-      const chunkShares = shares.map((s) => ({ x: s.x, y: s.y[c] }));
+      const chunkShares = unique.map((s) => ({ x: s.x, y: s.y[c] }));
       const val = lagrangeInterpolate(chunkShares, p);
       hexChunks.push(Number(val).toString(16).padStart(chunkLengths[c], "0"));
     }

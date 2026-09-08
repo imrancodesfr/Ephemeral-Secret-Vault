@@ -20,6 +20,13 @@ export function invokeChaincode(req, res) {
     return res.status(400).json({ error: "chaincode and function are required" });
   }
 
+  // Mutations change the shared simulated ledger — admins only. Read-only
+  // functions (readAsset/getAllAssets/getHistory) stay open to any signed-in user.
+  const MUTATING = new Set(["createAsset", "updateAsset", "deleteAsset"]);
+  if (MUTATING.has(fn) && req.user.role !== "ADMIN") {
+    return res.status(403).json({ error: "Forbidden: admin role required for this chaincode mutation" });
+  }
+
   const cc = fabricNetwork.getChaincode(chaincode);
   if (!cc) return res.status(404).json({ error: `Chaincode '${chaincode}' not found` });
 

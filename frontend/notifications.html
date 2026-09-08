@@ -84,7 +84,7 @@
           ? '<p class="pick-note" style="margin:8px 0 0">This share was already delivered once and is no longer stored.</p>'
           : '';
         const shareBox = (n.type === 'SHARE_ISSUED')
-          ? '<button class="btn btn-sm" onclick="window.__copyShare(\'' + n.id + '\')">Copy my share</button><div id="share-' + n.id + '" class="share-box"></div>'
+          ? '<button class="btn btn-sm" data-share-id="' + esc(n.id) + '">Copy my share</button><div id="share-' + esc(n.id) + '" class="share-box"></div>'
           : '';
         return '<div class="card" style="' + (n.read ? 'opacity:.72' : 'border-color:var(--border-strong)') + '">' +
           '<div class="card-header"><strong>' + (n.subject || n.type) + '</strong>' +
@@ -96,8 +96,8 @@
             (n.recoveryId ? '<span>Recovery: ' + idWithCopy(n.recoveryId) + '</span>' : '') +
             '<span>' + new Date(n.createdAt).toLocaleString() + '</span></div>' +
           '<div class="card-actions">' +
-            (!n.read ? '<button class="btn" onclick="window.__markRead(\'' + n.id + '\')">Mark read</button>' : '') +
-            (n.vaultId && n.type !== 'SHARE_ISSUED' ? '<button class="btn" onclick="window.__goRecovery(\'' + n.vaultId + '\')">Go to Recovery</button>' : '') +
+            (!n.read ? '<button class="btn" data-markread-id="' + esc(n.id) + '">Mark read</button>' : '') +
+            (n.vaultId && n.type !== 'SHARE_ISSUED' ? '<button class="btn" data-gorecovery-id="' + esc(n.vaultId) + '">Go to Recovery</button>' : '') +
             shareBox +
           '</div></div>';
       }).join('');
@@ -132,16 +132,26 @@
           '</div>').join('');
     }
 
-    window.__markRead = function (id) { markRead(id); };
-    window.__goRecovery = function (vaultId) {
-      localStorage.removeItem('recoveryVaultId');
-      window.location.href = 'recovery.html?vault=' + encodeURIComponent(vaultId);
-    };
-    window.__copyShare = function (id) {
-      const box = document.getElementById('share-' + id);
-      if (box && box.textContent) copyText(box.textContent);
-      else toast('This share is no longer stored (already delivered once)', 'info');
-    };
+    // Delegated actions (no inline onclick — avoids HTML-escaped-id injection).
+    document.addEventListener('click', (ev) => {
+      const t = ev.target;
+      const shareBtn = t.closest && t.closest('[data-share-id]');
+      if (shareBtn) {
+        const id = shareBtn.getAttribute('data-share-id');
+        const box = document.getElementById('share-' + id);
+        if (box && box.textContent) copyText(box.textContent);
+        else toast('This share is no longer stored (already delivered once)', 'info');
+        return;
+      }
+      const markBtn = t.closest && t.closest('[data-markread-id]');
+      if (markBtn) { markRead(markBtn.getAttribute('data-markread-id')); return; }
+      const goBtn = t.closest && t.closest('[data-gorecovery-id]');
+      if (goBtn) {
+        const vaultId = goBtn.getAttribute('data-gorecovery-id');
+        localStorage.removeItem('recoveryVaultId');
+        window.location.href = 'recovery.html?vault=' + encodeURIComponent(vaultId);
+      }
+    });
 
     function esc(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
