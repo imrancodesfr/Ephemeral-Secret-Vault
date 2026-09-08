@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Vault - Ephemeral Vault</title>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+  <div id="shell-slots">
+    <div class="page-header">
+      <h1>Create a vault</h1>
+      <p>Encrypt a secret, split it into guardian-held shares, and define the threshold that unlocks recovery.</p>
+    </div>
+
+    <div class="honesty-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div>The server stores only a <b>hash (commitment)</b> of each share — never the share itself. Each guardian's share is delivered exactly once and removed from storage the first time it is viewed. If a guardian loses it, it is gone for good.</div>
+    </div>
+
+    <div class="wizard" id="wizard">
+      <div class="stepper" id="stepper"></div>
+
+      <div class="wizard-panels">
+
+        <!-- Step 1 · Secret -->
+        <section class="wizard-panel" data-step="1">
+          <h3>1 · Secret</h3>
+          <div class="form-group">
+            <label for="secret">Secret to protect</label>
+            <textarea id="secret" placeholder="e.g. My wallet seed phrase, my master password…"></textarea>
+            <p class="pick-note">Encrypted with a random AES-256-GCM key before it is ever split or stored. The plaintext is never written to the database.</p>
+          </div>
+          <div class="wizard-nav"><button class="btn btn-secondary" onclick="goStep(2)">Next: Expiry</button></div>
+        </section>
+
+        <!-- Step 2 · Expiry / dead man's switch -->
+        <section class="wizard-panel" data-step="2">
+          <h3>2 · Expiry &amp; dead man's switch</h3>
+          <div class="form-group">
+            <label for="expiryMinutes">Time-to-live (minutes)</label>
+            <input id="expiryMinutes" type="number" value="2" min="1" />
+            <p class="pick-note">If the owner does not renew before this deadline, the vault automatically enters recovery mode (dead man's switch). This protects the secret even if the owner is gone.</p>
+          </div>
+          <div class="wizard-nav">
+            <button class="btn btn-secondary" onclick="goStep(1)">Back</button>
+            <button class="btn btn-secondary" onclick="goStep(3)">Next: Guardians</button>
+          </div>
+        </section>
+
+        <!-- Step 3 · Guardians -->
+        <section class="wizard-panel" data-step="3">
+          <h3>3 · Guardians <span id="guardian-count" class="badge badge-info">0 selected</span></h3>
+          <p class="pick-note">Every selected guardian holds exactly one share. The more guardians you pick, the more resilient the vault is to lost shares.</p>
+          <div id="guardian-ids" class="muted"></div>
+          <div id="guardian-options" class="form-group"><span class="muted">Loading users…</span></div>
+          <div class="wizard-nav">
+            <button class="btn btn-secondary" onclick="goStep(2)">Back</button>
+            <button class="btn btn-secondary" onclick="{ if (selected.size < 2) { toast('Select at least 2 guardians', 'error'); return; } goStep(4); }">Next: Threshold</button>
+          </div>
+        </section>
+
+        <!-- Step 4 · Threshold & recipient -->
+        <section class="wizard-panel" data-step="4">
+          <h3>4 · Threshold to reconstruct</h3>
+          <div class="form-group">
+            <label for="requiredShares">Required shares (k of n)</label>
+            <select id="requiredShares" class="full"></select>
+            <p class="pick-note">Shamir Secret Sharing uses a <b>k-of-n</b> threshold. Any <b>k</b> of the <b>n</b> guardians can reconstruct the secret, even if some guardians lose their share.</p>
+          </div>
+          <div class="steps" id="threshold-steps"></div>
+          <div class="form-group">
+            <label>Recovery recipient</label>
+            <select id="recoveryRecipient" class="full"></select>
+            <p class="pick-note">Who receives the reconstructed secret once the threshold is met.</p>
+          </div>
+          <div class="wizard-nav">
+            <button class="btn btn-secondary" onclick="goStep(3)">Back</button>
+            <button class="btn btn-secondary" onclick="goStep(5)">Next: Review</button>
+          </div>
+        </section>
+
+        <!-- Step 5 · Review -->
+        <section class="wizard-panel" data-step="5">
+          <h3>5 · Review &amp; create</h3>
+          <div class="card" style="margin-top:8px">
+            <div id="review-content" class="muted">Review your choices.</div>
+          </div>
+          <div class="wizard-nav">
+            <button class="btn btn-secondary" onclick="goStep(4)">Back</button>
+            <button class="btn" onclick="createVault()">Create vault</button>
+          </div>
+        </section>
+
+        <!-- Step 6 · Result / shares -->
+        <section class="wizard-panel" data-step="6">
+          <h3>6 · Vault created</h3>
+          <div id="result"></div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+  <script type="module" src="js/shell.js"></script>
+  <script src="js/api.js"></script>
+  <script type="module">
+    import { renderShell } from "./js/shell.js";
+    import { toast, getUser, requireAuth, handleError, idWithCopy, copyText } from "./js/ui.js";
+    renderShell("create-vault.html");
+
+    window.__copy = copyText;
+    window.__goto = (href) => { window.location.href = href; };
+
+    const user = requireAuth();
+    let selected = new Set();
+    let currentStep = 1;
+    let lastResult = null;
+
+    const STEPS = ['Secret', 'Expiry', 'Guardians', 'Threshold', 'Review', 'Shares'];
+
+    function renderStepper() {
+      document.getElementById('stepper').innerHTML = STEPS.map((label, i) => {
+        const n = i + 1;
+        const cls = n === currentStep ? ' current' : (n < currentStep ? ' done' : '');
+        return '<div class="step' + cls + '" onclick="goStep(' + n + ')"><div class="step-dot">' + n + '</div>' + label + '</div>';
+      }).join(' | ');
+    }
+
+    window.goStep = function (n) {
+      if (n > 5 && !lastResult) return;
+      if (n < 1 || n > 6) return;
+      currentStep = n;
+      document.querySelectorAll('.wizard-panel').forEach((p) => { p.style.display = (+p.dataset.step === n) ? 'block' : 'none'; });
+      renderStepper();
+      if (n === 5) renderReview();
+    };
+
+    window.__stepper = goStep;
+
+    loadUsers();
+
+    async function loadUsers() {
+      const res = await api.get('/api/auth/users');
+      const users = res.users || [];
+
+      const others = users.filter((u) => u.id !== user.id);
+      const guardianCandidates = others.filter((u) => u.role === 'GUARDIAN');
+      const recipientCandidates = others.filter((u) => u.role === 'RECIPIENT' || u.role === 'OWNER' || u.role === 'GUARDIAN');
+
+      const rsel = document.getElementById('recoveryRecipient');
+      rsel.innerHTML = '<option value="' + user.id + '">' + user.name + ' (me, ' + user.role + ') — default recipient</option>' +
+        recipientCandidates.map((u) => '<option value="' + u.id + '">' + u.name + ' (' + u.email + ') — ' + u.role + '</option>').join('');
+
+      const names = new Map(users.map((u) => [u.id, u.name]));
+
+      const gbox = document.getElementById('guardian-options');
+      gbox.innerHTML = guardianCandidates.length
+        ? guardianCandidates.map((u) =>
+            '<label class="check-row" style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer">' +
+            '<input type="checkbox" class="guardian-cb" value="' + u.id + '" data-name="' + u.name + '">' +
+            '<span>' + u.name + ' (' + u.email + ') — ' + u.role + '</span>' +
+            '</label>').join('')
+        : '<span class="muted">No users with role Guardian yet. Register guardians first (login.html → Register).</span>';
+
+      document.querySelectorAll('.guardian-cb').forEach((cb) => {
+        cb.addEventListener('change', () => {
+          if (cb.checked) selected.add(cb.value);
+          else selected.delete(cb.value);
+          renderThreshold();
+        });
+      });
+
+      window.__guardianName = (id) => names.get(id) || ('Guardian ' + id);
+    }
+
+    function renderThreshold() {
+      const n = selected.size;
+      const countEl = document.getElementById('guardian-count');
+      countEl.textContent = n + ' selected';
+
+      const sel = document.getElementById('requiredShares');
+      const options = [];
+      for (let k = 2; k <= n; k++) options.push('<option value="' + k + '">' + k + ' of ' + n + '</option>');
+      sel.innerHTML = options.length ? options.join('') : '<option value="2">2 of…</option>';
+      sel.value = sel.options[0] ? sel.options[0].value : '2';
+
+      const steps = document.getElementById('threshold-steps');
+      if (n < 2) {
+        steps.innerHTML = '<p class="pick-note" style="padding:8px 0">Select at least 2 guardians to configure the threshold.</p>';
+      } else {
+        const k = parseInt(sel.value) || 2;
+        let html = '';
+        for (let i = 1; i <= n; i++) {
+          const cls = i <= k ? 'done' : 'current';
+          html += '<div class="step ' + (i < k ? 'done' : cls) + '"><div class="step-dot">' + i + '</div>Share ' + i + '</div>';
+        }
+        steps.innerHTML = html + '<p class="pick-note" style="padding-top:10px">' + k + ' of ' + n + ' shares are required to reconstruct (' + k + ' of ' + n + '). ' + (n - k) + ' guardian(s) may be unavailable and the secret can still be recovered.</p>';
+      }
+    }
+
+    renderThreshold();
+
+    function renderReview() {
+      const secret = document.getElementById('secret').value || '(empty)';
+      const expiry = document.getElementById('expiryMinutes').value;
+      const k = parseInt(document.getElementById('requiredShares').value) || 2;
+      const n = selected.size;
+      const recSel = document.getElementById('recoveryRecipient');
+      const recName = recSel.selectedOptions[0] ? recSel.selectedOptions[0].textContent : '—';
+
+      let gList = [...selected].map((id) => window.__guardianName(id));
+      gList = gList.length ? gList.join(', ') : 'none yet';
+
+      document.getElementById('review-content').innerHTML =
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">' +
+          reviewRow('Secret', secret.length > 60 ? secret.slice(0, 57) + '…' : secret) +
+          reviewRow('Guardians', gList) +
+          reviewRow('Threshold', k + ' of ' + n + ' required') +
+          reviewRow('Recovery recipient', recName) +
+          reviewRow('Dead man\'s switch', 'expires in ' + expiry + ' minute(s) without renewal') +
+        '</div>';
+    }
+
+    function reviewRow(label, value) {
+      return '<div><div class="label">' + label + '</div><div>' + value + '</div></div>';
+    }
+
+    window.createVault = async function () {
+      if (!user) { toast('Please sign in first', 'error'); return; }
+
+      const secret = document.getElementById('secret').value;
+      const guardianIds = [...selected];
+      const requiredShares = parseInt(document.getElementById('requiredShares').value) || 2;
+      const expiryMinutes = parseInt(document.getElementById('expiryMinutes').value) || 2;
+
+      if (!secret) { toast('Please enter a secret', 'error'); return; }
+      if (guardianIds.length < 2) { toast('Select at least 2 guardians', 'error'); return; }
+
+      toast('Encrypting, splitting, and recording commitments…', 'info');
+      const res = await api.post('/api/vault/create', {
+        secret,
+        totalShares: guardianIds.length,
+        requiredShares,
+        expiryMinutes,
+        guardians: guardianIds.map((id) => ({ userId: id })),
+        recoveryRecipient: document.getElementById('recoveryRecipient').value || user.id,
+      });
+
+      if (res.vault) {
+        lastResult = res;
+        toast('Vault created. Copy the shares now — they are delivered only once.', 'success', 8000);
+        showResult(res);
+        goStep(6);
+      } else {
+        handleError('result', res, 'Failed to create vault');
+      }
+    };
+
+    function showResult(res) {
+      const v = res.vault;
+      const g = res.guardians || [];
+      const shares = res.oneTimeShares || [];
+
+      const shareHtml = shares.map((s, i) => {
+        const guardian = g.find((x) => x.shareIndex === i + 1);
+        const holder = guardian ? (window.__guardianName ? window.__guardianName(guardian.userId) : 'Guardian ' + (i + 1)) : 'Share ' + (i + 1);
+        return '<div class="form-group">' +
+          '<label>Share #' + (i + 1) + ' · ' + holder + '</label>' +
+          '<div class="share-box">' + JSON.stringify(s) + '</div>' +
+          '<button class="btn btn-secondary" style="margin-top:6px" data-share="' + i + '">Copy share</button>' +
+          '</div>';
+      }).join('');
+
+      document.getElementById('result').innerHTML =
+        '<div class="card">' +
+          '<h3>Vault created</h3>' +
+          '<div class="share-warn">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:2px"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>' +
+            '<div><b>These shares are shown exactly once.</b> The server stores only their commitments (SHA-256 hashes). If you leave this page without copying them, no one can ever recover this vault. Deliver each share to its guardian privately.</div>' +
+          '</div>' +
+          '<div class="form-group" style="margin-top:12px"><label>Vault ID</label><div>' + idWithCopy(v.id) + '</div></div>' +
+          '<div class="form-row">' +
+            '<div class="form-group"><label>Status</label><div><span class="chip chip-ACTIVE">' + v.status + '</span></div></div>' +
+            '<div class="form-group"><label>Threshold</label><div>' + v.requiredShares + ' of ' + v.totalShares + ' shares</div></div>' +
+            '<div class="form-group"><label>Expires</label><div class="mono">' + new Date(v.expiryTimestamp).toLocaleString() + '</div></div>' +
+          '</div>' +
+          '<h3 style="margin-top:14px">Guardian shares — copy immediately</h3>' + shareHtml +
+          '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">' +
+            '<button class="btn" onclick="window.__goto(\'dashboard.html\')">Go to Dashboard</button>' +
+            '<a class="btn btn-secondary" href="vaults.html">My Vaults</a>' +
+          '</div>' +
+        '</div>';
+
+      document.querySelectorAll('[data-share]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const share = shares[parseInt(btn.dataset.share)];
+          copyText(JSON.stringify(share));
+        });
+      });
+    }
+
+    goStep(1);
+  </script>
+</body>
+</html>

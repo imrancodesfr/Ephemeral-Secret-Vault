@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blockchain Audit - Ephemeral Vault</title>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+  <div id="shell-slots">
+    <div class="page-header">
+      <h1>Blockchain Audit <span class="chip chip-AWAITING_SHARES">SIM</span></h1>
+      <div class="actions">
+        <button class="btn btn-sm" onclick="validateChain()">Validate chain</button>
+      </div>
+    </div>
+
+    <div class="honesty-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div>This is a <b>local blockchain simulation</b>: one node, one JSON file. It demonstrates Proof-of-Work mining, Merkle roots, tamper-evidence and an immutable audit trail of vault lifecycle events. It is <b>not</b> a decentralized network and holds no secret material — only metadata and hashes.</div>
+    </div>
+
+    <h2>Audit &amp; validation</h2>
+    <div id="audit-status" class="card"><span class="muted">Loading…</span></div>
+
+    <h2>Mining &amp; ledger</h2>
+    <div id="mining-status" class="stat-grid"></div>
+
+    <h2>Blocks</h2>
+    <div class="table-wrap" id="blocks-table"></div>
+
+    <h2>Block detail &amp; Merkle</h2>
+    <div class="panel">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="blockIndex">Choose block (index)</label>
+          <input id="blockIndex" type="number" value="0" min="0" />
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:8px;padding-bottom:2px">
+          <button class="btn btn-secondary" onclick="viewBlock()">View block</button>
+          <button class="btn btn-secondary" onclick="viewMerkle()">Merkle root</button>
+        </div>
+      </div>
+      <div id="block-detail"></div>
+    </div>
+
+    <details class="card" style="margin-top:20px">
+      <summary>Developer tools — mine pending transactions &amp; inject events (advanced)</summary>
+      <div id="devtools" style="margin-top:12px">
+        <div class="grid-2">
+          <div class="panel">
+            <h3>Mine pending transactions</h3>
+            <div class="form-group">
+              <label for="minerAddr">Miner address</label>
+              <input id="minerAddr" value="demo-miner" />
+            </div>
+            <div class="form-group" style="max-width:160px">
+              <label for="difficulty">Difficulty</label>
+              <input id="difficulty" type="number" value="4" min="1" />
+            </div>
+            <button class="btn" onclick="mineBlock()">Mine pending transactions</button>
+          </div>
+
+          <div class="panel">
+            <h3>Add a transaction</h3>
+            <div class="form-group">
+              <label for="txType">Type</label>
+              <select id="txType">
+                <option>VAULT_CREATED</option>
+                <option>VAULT_RENEWED</option>
+                <option>VAULT_EXPIRED</option>
+                <option>RECOVERY_STARTED</option>
+                <option>RECOVERY_COMPLETED</option>
+                <option>AUDIT_EVENT</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="txVaultId">Vault ID</label>
+                <input id="txVaultId" placeholder="VLT-7F3A2091" />
+              </div>
+              <div class="form-group">
+                <label for="txActor">Actor (recorded as you)</label>
+                <input id="txActor" readonly value="" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="txData">Data (JSON)</label>
+              <textarea id="txData" rows="2" placeholder='{"note":"custom audit event"}'></textarea>
+            </div>
+            <button class="btn" onclick="addTx()">Add transaction</button>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <div id="result"></div>
+  </div>
+  <script type="module" src="js/shell.js"></script>
+  <script src="js/api.js"></script>
+  <script type="module">
+    import { renderShell } from "./js/shell.js";
+    import { toast, requireAuth } from "./js/ui.js";
+    renderShell("blockchain.html");
+    const me = requireAuth();
+    if (me && me.id) document.getElementById('txActor').value = me.id;
+
+    window.loadStatus = async function () {
+      const [s, v] = await Promise.all([api.get('/api/mining/status'), api.get('/api/blockchain/validate')]);
+      document.getElementById('mining-status').innerHTML =
+        stat('Blocks', s.chainLength || 0) +
+        stat('Pending TXs', s.pendingTransactions || 0) +
+        stat('Difficulty', s.difficulty || 0) +
+        stat('Chain integrity', s.isValid ? 'VALID' : 'TAMPERED');
+
+      document.getElementById('audit-status').innerHTML =
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px">' +
+          auditItem('Integrity', v && v.isValid ? 'VALID' : 'TAMPERED', v && v.isValid ? 'ok' : 'bad') +
+          auditItem('Blocks', s.chainLength || 0, 'ok') +
+          auditItem('Latest block', '<span class="mono" style="font-size:12px;word-break:break-all">' + (s.latestBlockHash || '—') + '</span>', 'ok') +
+        '</div>';
+      loadBlocks();
+    };
+
+    window.loadBlocks = async function () {
+      const res = await api.get('/api/blockchain');
+      const chain = res.chain || [];
+      if (!chain.length) { document.getElementById('blocks-table').innerHTML = '<div class="empty">No blocks yet.</div>'; return; }
+      let rows = '';
+      chain.forEach(b => {
+        rows += '<tr>' +
+          '<td>#' + b.index + '</td>' +
+          '<td>' + (b.transactions || []).length + '</td>' +
+          '<td class="mono" style="font-size:12px;word-break:break-all;max-width:220px">' + short(b.hash) + '</td>' +
+          '<td class="mono" style="font-size:12px">' + short(b.previousHash) + '</td>' +
+          '<td>' + (b.nonce || 0) + '</td>' +
+          '<td>' + (b.difficulty || 0) + '</td>' +
+          '</tr>';
+      });
+      document.getElementById('blocks-table').innerHTML = chain.length
+        ? '<table><thead><tr><th>#</th><th>TXs</th><th>Block hash</th><th>Prev hash</th><th>Nonce</th><th>Difficulty</th></tr></thead><tbody>' + rows + '</tbody></table>'
+        : '<div class="empty">No blocks yet.</div>';
+    };
+
+    function short(h) { return h ? h.slice(0, 12) + '…' + h.slice(-8) : ''; }
+    function stat(label, value) { return '<div class="stat"><div class="label">' + label + '</div><div class="value">' + value + '</div></div>'; }
+    function auditItem(label, value, state) {
+      const color = state === 'ok' ? 'var(--success)' : 'var(--danger)';
+      return '<div><div class="label">' + label + '</div><div style="color:' + color + ';font-weight:600">' + value + '</div></div>';
+    }
+
+    function show(res) {
+      document.getElementById('result').innerHTML = '<pre>' + JSON.stringify(res, null, 2) + '</pre>';
+    }
+
+    window.mineBlock = async function () {
+      toast('Mining pending transactions…', 'info');
+      const res = await api.post('/api/mining/mine', {
+        minerAddress: document.getElementById('minerAddr').value,
+        difficulty: parseInt(document.getElementById('difficulty').value),
+      });
+      if (res.hash) toast('Block #' + res.blockIndex + ' mined in ' + res.elapsed, 'success');
+      else toast(res.message || 'Nothing mined', 'info');
+      show(res);
+      loadStatus();
+    };
+
+    window.addTx = async function () {
+      let d = {};
+      try { d = JSON.parse(document.getElementById('txData').value || '{}'); } catch { toast('JSON data invalid', 'error'); return; }
+      const res = await api.post('/api/blockchain/transaction', {
+        type: document.getElementById('txType').value,
+        vaultId: document.getElementById('txVaultId').value || 'VLT-AUDIT',
+        data: d,
+      });
+      toast('Transaction queued for mining', 'success');
+      show(res);
+      loadStatus();
+    };
+
+    window.viewBlock = async function () {
+      show(await api.get('/api/blockchain/block/' + document.getElementById('blockIndex').value));
+    };
+    window.viewChain = async function () { show(await api.get('/api/blockchain')); };
+    window.validateChain = async function () {
+      const res = await api.get('/api/blockchain/validate');
+      toast(res.isValid ? 'Chain is intact' : 'Chain is NOT valid!', res.isValid ? 'success' : 'error');
+      show(res);
+    };
+    window.viewMerkle = async function () {
+      show(await api.get('/api/blockchain/block/' + document.getElementById('blockIndex').value + '/merkle'));
+    };
+
+    loadStatus();
+  </script>
+</body>
+</html>

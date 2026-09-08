@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ephemeral Secret Vault</title>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+  <div class="landing">
+    <header class="landing-header">
+      <div class="brand">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Ephemeral Vault
+      </div>
+      <nav class="landing-nav">
+        <a href="dashboard.html">Dashboard</a>
+        <a href="login.html" class="btn">Sign in</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="hero-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Secret sharing with an auditable lifecycle
+      </div>
+      <h1>Store secrets. Recover securely. Never trust a single point of failure.</h1>
+      <p>Threat-secret splitting via Shamir Secret Sharing, guardian-held shares, and an expiry-driven dead man's switch — with every lifecycle event recorded in an immutable, tamper-evident audit trail.</p>
+      <div class="hero-actions">
+        <a href="create-vault.html" class="btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          Create a vault
+        </a>
+        <a href="login.html" class="btn btn-secondary">Sign in</a>
+      </div>
+      <div class="hero-stats">
+        <div class="item"><div class="value">2-of-3</div><div class="label">Threshold shares</div></div>
+        <div class="item"><div class="value">AES-256</div><div class="label">Encryption</div></div>
+        <div class="item"><div class="value">SHA-256</div><div class="label">Hashing</div></div>
+        <div class="item"><div class="value">PoW</div><div class="label">Mining</div></div>
+      </div>
+      <div class="hero-note">Academic demo — the blockchain, Ethereum and Hyperledger Fabric integrations run in simulation mode by default, and every page that relies on them says so.</div>
+    </section>
+
+    <div class="feature-heading">How it works</div>
+    <section class="feature-grid">
+      <div class="feature">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <h3>Guardian-Held Shares</h3>
+        <p>The server keeps only one-way commitments to each share — guardians hold the real shares and reveal them only during recovery.</p>
+      </div>
+      <div class="feature">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 11V7a4 4 0 1 1 8 0v4"/><path d="M5 11h14v9H5z"/></svg>
+        <h3>Shamir Secret Sharing</h3>
+        <p>Encrypted secrets split into shares; a threshold of k-of-n shares reconstructs the secret.</p>
+      </div>
+      <div class="feature">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V4h6v16M20 20H14V8h6v12"/></svg>
+        <h3>Audit Trail</h3>
+        <p>Every action — create, renew, expire, recover — is appended to a proof-of-work ledger that detects tampering.</p>
+      </div>
+      <div class="feature">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        <h3>Dead Man's Switch</h3>
+        <p>Failure to renew triggers recovery mode automatically after expiry.</p>
+      </div>
+      <div class="feature">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M6 18l2-2"/><circle cx="12" cy="12" r="3"/></svg>
+        <h3>Guardian Governance</h3>
+        <p>Recovery requires a threshold of guardian-held shares — no single holder, not even the server, can unlock the secret alone.</p>
+      </div>
+      <div class="feature">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15l2 2 4-4"/></svg>
+        <h3>Document Notary</h3>
+        <p>SHA-256 fingerprints notarized in the ledger confirm a document is unmodified over time.</p>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

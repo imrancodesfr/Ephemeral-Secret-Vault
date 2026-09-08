@@ -1,0 +1,272 @@
+{
+  "info": {
+    "name": "Ephemeral Secret Vault",
+    "description": "Complete end-to-end Postman collection. Run in order (1→23). Each request that produces an ID auto-captures it via test scripts. Guardian shares are fetched via dedicated endpoints, enabling the recovery flow to complete automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "ownerEmail", "value": "owner@test.com" },
+    { "key": "ownerPassword", "value": "pass123" }
+  ],
+  "item": [
+    {
+      "name": "1. Register User",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('200 OK', function() { pm.response.to.have.status(200); });",
+        "const b = pm.response.json();",
+        "pm.collectionVariables.set('userId', b.user.id);"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/auth/register",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Owner\",\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"{{ownerPassword}}\",\n  \"role\": \"OWNER\",\n  \"walletAddress\": \"0x1234567890abcdef\"\n}" }
+      }
+    },
+    {
+      "name": "2. Login User",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('200 OK', function() { pm.response.to.have.status(200); });",
+        "pm.collectionVariables.set('userId', pm.response.json().user.id);"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/auth/login",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"{{ownerPassword}}\"\n}" }
+      }
+    },
+    {
+      "name": "3. Create Vault (AES-256 + Shamir 2-of-3)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "const b = pm.response.json();",
+        "pm.test('Vault created', function() { pm.response.to.have.status(200); pm.expect(b.success).to.be.true; });",
+        "pm.collectionVariables.set('vaultId', b.vault.id);",
+        "pm.collectionVariables.set('guardianId', b.guardians[0].id);",
+        "pm.collectionVariables.set('guardianId2', b.guardians[1].id);",
+        "pm.collectionVariables.set('guardianId3', b.guardians[2].id);"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/vault/create",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"secret\": \"My confidential recovery information\",\n  \"totalShares\": 3,\n  \"requiredShares\": 2,\n  \"expiryMinutes\": 30,\n  \"ownerId\": \"{{userId}}\",\n  \"guardians\": [\n    { \"userId\": \"guardian-a\" },\n    { \"userId\": \"guardian-b\" },\n    { \"userId\": \"guardian-c\" }\n  ],\n  \"recoveryRecipient\": \"{{userId}}\"\n}" }
+      }
+    },
+    {
+      "name": "4. Get Vault Details",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/vault/{{vaultId}}" }
+    },
+    {
+      "name": "5. Renew Vault",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('200 OK', function() { pm.response.to.have.status(200); });"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/vault/{{vaultId}}/renew",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{userId}}\"\n}" }
+      }
+    },
+    {
+      "name": "6. Get Vault Status",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/vault/{{vaultId}}/status" }
+    },
+    {
+      "name": "7. Add Blockchain Transaction (VAULT_CREATED)",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/blockchain/transaction",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"type\": \"VAULT_CREATED\",\n  \"vaultId\": \"{{vaultId}}\",\n  \"actor\": \"{{userId}}\",\n  \"data\": { \"totalShares\": 3, \"requiredShares\": 2 }\n}" }
+      }
+    },
+    {
+      "name": "8. Mine Block (Proof-of-Work, difficulty 4)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Block mined', function() { pm.response.to.have.status(200); pm.expect(pm.response.json().success).to.be.true; });"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/mining/mine",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"minerAddress\": \"demo-miner\",\n  \"difficulty\": 4\n}" }
+      }
+    },
+    {
+      "name": "9. Get Full Blockchain",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/blockchain" }
+    },
+    {
+      "name": "10. Validate Blockchain",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Chain is valid', function() { pm.expect(pm.response.json().message).to.equal('Blockchain is valid'); });"
+      ], "type": "text/javascript" }}],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/blockchain/validate" }
+    },
+    {
+      "name": "11. Get Merkle Root (block 0)",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/blockchain/block/0/merkle" }
+    },
+    {
+      "name": "12. Register Document (hash stored on-chain via miner)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "const b = pm.response.json();",
+        "pm.test('Document registered', function() { pm.response.to.have.status(200); pm.expect(b.document.id).to.be.ok; });",
+        "pm.collectionVariables.set('docId', b.document.id);"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/documents/register",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"documentName\": \"Confidential Report\",\n  \"documentContent\": \"This is the content of the confidential document.\",\n  \"ownerId\": \"{{userId}}\"\n}" }
+      }
+    },
+    {
+      "name": "13. Verify Document Integrity",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Document verified', function() { pm.expect(pm.response.json().verified).to.be.true; });"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/documents/verify",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"documentId\": \"{{docId}}\",\n  \"documentContent\": \"This is the content of the confidential document.\"\n}" }
+      }
+    },
+    {
+      "name": "14. Create Supply Chain Asset",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Asset created', function() { pm.expect(pm.response.json().asset.status).to.equal('CREATED'); });"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/supply-chain/create",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"assetId\": \"DOC-1001\",\n  \"name\": \"Recovery Package\",\n  \"description\": \"Official recovery package\",\n  \"ownerId\": \"{{userId}}\"\n}" }
+      }
+    },
+    {
+      "name": "15. Transfer Supply Chain Asset",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Asset transferred', function() { pm.expect(pm.response.json().asset.status).to.equal('ASSIGNED'); });"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/supply-chain/transfer",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"assetId\": \"DOC-1001\",\n  \"from\": \"Organization A\",\n  \"to\": \"Organization B\"\n}" }
+      }
+    },
+    {
+      "name": "16. Create Voting Proposal",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "const b = pm.response.json();",
+        "pm.test('Proposal created', function() { pm.expect(b.proposal.id).to.be.ok; });",
+        "pm.collectionVariables.set('proposalId', b.proposal.id);"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/voting/proposal",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"title\": \"Authorize Recovery\",\n  \"description\": \"Vote to authorize recovery for vault {{vaultId}}\",\n  \"options\": [\"YES\", \"NO\"],\n  \"creatorId\": \"{{userId}}\",\n  \"vaultId\": \"{{vaultId}}\"\n}" }
+      }
+    },
+    {
+      "name": "17. Cast Vote",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Vote cast', function() { pm.expect(pm.response.json().totalVotes).to.equal(1); });"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/voting/vote",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"proposalId\": \"{{proposalId}}\",\n  \"voterId\": \"guardian-a\",\n  \"option\": \"YES\"\n}" }
+      }
+    },
+    {
+      "name": "18. Activate Recovery",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "const b = pm.response.json();",
+        "pm.test('Recovery activated', function() { pm.expect(b.success).to.be.true; });",
+        "pm.collectionVariables.set('recoveryId', b.recovery.id);"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/vault/{{vaultId}}/recovery",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{}" }
+      }
+    },
+    {
+      "name": "19. Get Guardian Share (guardian 1)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "const b = pm.response.json();",
+        "pm.test('Share retrieved', function() { pm.expect(b.shareData).to.be.ok; });",
+        "pm.collectionVariables.set('guardianShare1', JSON.stringify(b.shareData));"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/vault/{{vaultId}}/guardian/{{guardianId}}/share"
+      }
+    },
+    {
+      "name": "20. Get Guardian Share (guardian 2)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "const b = pm.response.json();",
+        "pm.test('Share retrieved', function() { pm.expect(b.shareData).to.be.ok; });",
+        "pm.collectionVariables.set('guardianShare2', JSON.stringify(b.shareData));"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/vault/{{vaultId}}/guardian/{{guardianId2}}/share"
+      }
+    },
+    {
+      "name": "21. Submit Recovery Share (guardian 1)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Share submitted', function() { pm.expect(pm.response.json().submittedCount).to.be.at.least(1); });"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/recovery/share",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"recoveryId\": \"{{recoveryId}}\",\n  \"guardianId\": \"{{guardianId}}\",\n  \"shareData\": {{guardianShare1}}\n}" }
+      }
+    },
+    {
+      "name": "22. Submit Recovery Share (guardian 2)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('All shares ready', function() { pm.expect(pm.response.json().allSharesReady).to.be.true; });"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/recovery/share",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"recoveryId\": \"{{recoveryId}}\",\n  \"guardianId\": \"{{guardianId2}}\",\n  \"shareData\": {{guardianShare2}}\n}" }
+      }
+    },
+    {
+      "name": "23. Get Recovery Status",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('All shares ready', function() { pm.expect(pm.response.json().allSharesReady).to.be.true; });"
+      ], "type": "text/javascript" }}],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/recovery/{{recoveryId}}/status" }
+    },
+    {
+      "name": "24. Complete Recovery (reconstruct AES-decrypted secret)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "const b = pm.response.json();",
+        "pm.test('Secret recovered', function() { pm.expect(b.secret).to.equal('My confidential recovery information'); });"
+      ], "type": "text/javascript" }}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/recovery/{{recoveryId}}/complete",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{userId}}\"\n}" }
+      }
+    }
+  ]
+}

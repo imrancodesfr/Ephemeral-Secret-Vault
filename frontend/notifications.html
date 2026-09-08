@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notifications - Ephemeral Vault</title>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+  <div id="shell-slots">
+    <div class="page-header">
+      <h1>Notifications</h1>
+      <p>Inbox for vault lifecycle events. When the owner does not renew before expiry, the <strong>Dead Man's Switch</strong> moves the vault to recovery mode and notifies guardians and the recipient.</p>
+    </div>
+
+    <div class="toolbar">
+      <strong id="user-chip" class="muted"></strong>
+      <button class="btn" onclick="markAllRead()">Mark all read</button>
+      <button class="btn" onclick="checkExpiry()">Run expiry check now</button>
+    </div>
+
+    <div id="unread-banner" class="honesty-banner" style="margin-top:14px"></div>
+    <div id="result" style="margin-top:16px"></div>
+
+    <h2 style="margin-top:24px">Simulated email outbox <span class="chip chip-AWAITING_SHARES">SIMULATION ONLY</span></h2>
+    <div class="honesty-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div>No real email is sent — this log mirrors what an outbound mail service would have delivered. It is visible to administrators only and share payloads are stripped after delivery.</div>
+    </div>
+    <div id="outbox-box" class="card"><span class="muted">Admin only — signing in as a non-admin hides this.</span></div>
+  </div>
+  <script type="module" src="js/shell.js"></script>
+  <script src="js/api.js"></script>
+  <script type="module">
+    import { renderShell } from "./js/shell.js";
+    import { toast, getUser, requireAuth, copyText, idWithCopy } from "./js/ui.js";
+    renderShell("notifications.html");
+
+    const user = requireAuth();
+    if (user) {
+      document.getElementById('user-chip').textContent = 'Inbox for ' + user.name + ' (' + user.id.slice(0, 8) + '…)';
+      loadNotifications();
+      if (user.role === 'ADMIN') loadOutbox();
+    }
+
+    window.loadNotifications = async function () {
+      const res = await api.get('/api/notifications/' + encodeURIComponent(user.id));
+      renderList(res.notifications || []);
+    };
+
+    window.markRead = async function (id) {
+      await api.post('/api/notifications/' + id + '/' + encodeURIComponent(user.id) + '/read', {});
+      loadNotifications();
+    };
+
+    window.markAllRead = async function () {
+      await api.post('/api/notifications/' + encodeURIComponent(user.id) + '/read-all', {});
+      toast('All marked as read', 'success');
+      loadNotifications();
+    };
+
+    window.checkExpiry = async function () {
+      toast('Running expiry/dead-man-switch check…', 'info');
+      const res = await api.post('/api/expiry/check', {});
+      toast('Check done', 'info');
+      loadNotifications();
+    };
+
+    window.__copy = copyText;
+
+    function renderList(notifs) {
+      const unread = notifs.filter((n) => !n.read).length;
+      document.getElementById('unread-banner').innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>' +
+        '<div><b>' + unread + '</b> unread notification(s) for this account. Share notifications are delivered once — after the first read the payload is removed from storage.</div>';
+
+      if (!notifs.length) {
+        document.getElementById('result').innerHTML = '<p class="muted">No notifications yet. Create a vault or let one expire to see lifecycle events.</p>';
+        return;
+      }
+
+      const cards = notifs.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).map((n) => {
+        const consumedMarker = (n.type === 'SHARE_ISSUED' && !(n.body || '').match(/\{"x":\d+,"y":\[[\d,\s]*\}\]/))
+          ? '<p class="pick-note" style="margin:8px 0 0">This share was already delivered once and is no longer stored.</p>'
+          : '';
+        const shareBox = (n.type === 'SHARE_ISSUED')
+          ? '<button class="btn btn-sm" onclick="window.__copyShare(\'' + n.id + '\')">Copy my share</button><div id="share-' + n.id + '" class="share-box"></div>'
+          : '';
+        return '<div class="card" style="' + (n.read ? 'opacity:.72' : 'border-color:var(--border-strong)') + '">' +
+          '<div class="card-header"><strong>' + (n.subject || n.type) + '</strong>' +
+          '<span class="chip chip-' + (n.read ? 'COMPLETED' : 'AWAITING_SHARES') + '">' + (n.read ? 'read' : 'NEW') + '</span></div>' +
+          '<p style="white-space:pre-wrap">' + esc(n.body || '') + '</p>' +
+          consumedMarker +
+          '<div class="card-meta">' + (n.role ? '<span>Role: ' + n.role + '</span>' : '') +
+            (n.vaultId ? '<span>Vault: ' + idWithCopy(n.vaultId) + '</span>' : '') +
+            (n.recoveryId ? '<span>Recovery: ' + idWithCopy(n.recoveryId) + '</span>' : '') +
+            '<span>' + new Date(n.createdAt).toLocaleString() + '</span></div>' +
+          '<div class="card-actions">' +
+            (!n.read ? '<button class="btn" onclick="window.__markRead(\'' + n.id + '\')">Mark read</button>' : '') +
+            (n.vaultId && n.type !== 'SHARE_ISSUED' ? '<button class="btn" onclick="window.__goRecovery(\'' + n.vaultId + '\')">Go to Recovery</button>' : '') +
+            shareBox +
+          '</div></div>';
+      }).join('');
+
+      document.getElementById('result').innerHTML = cards;
+
+      // Pre-render each SHARE_ISSUED payload into its box when it is still present
+      // in this response (first-and-only delivery).
+      notifs.forEach((n) => {
+        if (n.type !== 'SHARE_ISSUED') return;
+        const m = (n.body || '').match(/\{"x":\d+,"y":\[[\d,\s]*\}\]/);
+        if (m && document.getElementById('share-' + n.id)) {
+          document.getElementById('share-' + n.id).textContent = m[0];
+        }
+      });
+    }
+
+    async function loadOutbox() {
+      const res = await api.get('/api/notifications/simulated-emails/outbox');
+      const box = document.getElementById('outbox-box');
+      const emails = res.emails || [];
+      if (!emails.length) {
+        box.innerHTML = '<span class="muted">No simulated emails yet.</span>';
+        return;
+      }
+      box.innerHTML = '<div class="muted" style="margin-bottom:8px">' + (res.note || 'Simulated outbox') + '</div>' +
+        emails.slice().reverse().map((e, i) =>
+          '<div class="card" style="margin:8px 0;opacity:.9">' +
+          '<div class="card-header"><strong>' + esc(e.subject) + '</strong><span class="chip chip-AWAITING_SHARES">SIM</span></div>' +
+          '<p style="white-space:pre-wrap;font-size:13px">' + esc(e.body || '') + '</p>' +
+          '<div class="card-meta"><span>To: ' + esc(e.to) + '</span><span>' + new Date(e.createdAt).toLocaleString() + '</span></div>' +
+          '</div>').join('');
+    }
+
+    window.__markRead = function (id) { markRead(id); };
+    window.__goRecovery = function (vaultId) {
+      localStorage.removeItem('recoveryVaultId');
+      window.location.href = 'recovery.html?vault=' + encodeURIComponent(vaultId);
+    };
+    window.__copyShare = function (id) {
+      const box = document.getElementById('share-' + id);
+      if (box && box.textContent) copyText(box.textContent);
+      else toast('This share is no longer stored (already delivered once)', 'info');
+    };
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+  </script>
+</body>
+</html>

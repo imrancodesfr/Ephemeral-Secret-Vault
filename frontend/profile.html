@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile - Ephemeral Vault</title>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+  <div id="shell-slots">
+    <div class="page-header">
+      <h1>Profile &amp; Security Status</h1>
+      <p>Your account details, plus an honest report of how this deployment holds keys, whether the audit chain is intact, and which components are simulations.</p>
+    </div>
+
+    <h2>Account</h2>
+    <div id="account-card" class="card"><span class="muted">Loading…</span></div>
+
+    <h2>Security &amp; audit status</h2>
+    <div id="security-card" class="card"><span class="muted">Loading…</span></div>
+
+    <h2>Demonstration honesty</h2>
+    <div id="demo-card" class="card"><span class="muted">Loading…</span></div>
+  </div>
+  <script type="module" src="js/shell.js"></script>
+  <script src="js/api.js"></script>
+  <script type="module">
+    import { renderShell } from "./js/shell.js";
+    import { requireAuth, copyText } from "./js/ui.js";
+    renderShell("profile.html");
+    window.__copy = copyText;
+
+    const user = requireAuth();
+    if (!user) throw new Error('redirecting');
+
+    (async function load() {
+      const [me, health, chain, eth, fabric] = await Promise.all([
+        api.get('/api/auth/me'),
+        api.get('/api/health'),
+        api.get('/api/blockchain/validate'),
+        api.get('/api/ethereum/status'),
+        api.get('/api/fabric/status'),
+      ]);
+
+      const id = me.user || user;
+
+      document.getElementById('account-card').innerHTML =
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">' +
+          row('Name', id.name) + row('Email', id.email) +
+          row('Role', '<span class="chip chip-ACTIVE">' + (id.role || 'OWNER') + '</span>') +
+          row('Account ID', '<span class="mono">' + id.id + '</span>') +
+          row('Wallet', id.walletAddress || '—') +
+          row('Registered', new Date(id.createdAt || Date.now()).toLocaleString()) +
+        '</div>';
+
+      const ep = (health.encryption || {});
+      const chainValid = chain && (chain.isValid === undefined ? chain.valid : chain.isValid);
+      const ethState = eth && eth.connected ? 'CONNECTED' : 'OFFLINE';
+
+      const items = [
+        item('Encryption key custody',
+          ep.persistent ? 'Held in environment (.env / secrets manager)' : 'EPHEMERAL — resets every restart',
+          ep.persistent ? 'ok' : 'warn',
+          ep.legacyKeyFilePresent ? 'A legacy key file was found next to the database and is IGNORED. Delete it (see .env.example).' : 'The master key lives only in the process environment, never beside the database.'),
+        item('Simulation mode', (health.simulationMode === undefined ? 'true' : health.simulationMode) ? 'ON — demo is labeled as such' : 'OFF', 'ok',
+          'Every simulated component (blockchain, Ethereum, Fabric) is visibly labeled. Set SIMULATION_MODE=false to stop the labels — though this project is a demo.'),
+        item('Local audit chain (PoW)', chainValid ? 'VALID' : 'TAMPERED', chainValid ? 'ok' : 'bad',
+          chainValid ? 'The local JSON-file ledger validates: every block links to the previous hash and the PoW difficulty holds.' : 'The local ledger fails validation — a block was altered or the hash chain broke. Open Blockchain Audit to inspect.'),
+        item('Ethereum (Ganache) RPC', ethState + (eth && eth.deployed ? '' : ' · not deployed'), (eth && eth.connected) ? 'ok' : 'warn',
+          eth && eth.connected ? 'Reachable via Ganache. Nothing is ever deployed to a public chain.' : 'No local Ganache node is running, so the RPC is reported OFFLINE and no contract is deployed.'),
+        item('Hyperledger Fabric', 'in-process simulation', 'warn',
+          'Runs entirely in-process for demonstration — no real Fabric network or peer is connected.'),
+      ];
+      document.getElementById('security-card').innerHTML = items.join('');
+
+      document.getElementById('demo-card').innerHTML =
+        '<div class="honesty-banner" style="margin:0">' +
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>' +
+        '<div>This project is an <b>academic demonstration</b>, not production infrastructure. The blockchain is a local JSON-file simulation, Ethereum contracts are source-only (never auto-deployed), Fabric is simulated in-process, and sessions/keys are managed in a way that is safe <i>for demo use</i>. Treat every boundary accordingly.</div></div>';
+    })();
+
+    function item(label, value, state, note) {
+      const color = state === 'ok' ? 'var(--success)' : state === 'warn' ? 'var(--warning)' : 'var(--danger)';
+      return '<div style="display:flex;gap:12px;align-items:baseline;justify-content:space-between;border-bottom:1px solid var(--border);padding:10px 0;flex-wrap:wrap">' +
+        '<div style="flex:1;min-width:200px"><div class="label">' + label + '</div><div style="color:' + color + ';font-weight:600">' + value + '</div></div>' +
+        '<div class="muted" style="flex:2;min-width:240px;font-size:13px">' + note + '</div></div>';
+    }
+
+    function row(label, value) {
+      return '<div><div class="label">' + label + '</div><div>' + value + '</div></div>';
+    }
+  </script>
+</body>
+</html>

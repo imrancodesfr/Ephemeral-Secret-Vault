@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Governor Voting - Ephemeral Vault</title>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+  <div id="shell-slots">
+    <div class="page-header">
+      <h1>Governor Voting</h1>
+      <p>A demonstration of a proposal/vote mechanism recording events to the local blockchain. It is not a consensus algorithm — it showcases how governance events could be recorded.</p>
+    </div>
+
+    <div class="honesty-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div>Votes are stored in the SQLite database and mirrored into local blockchain transactions. There is no on-chain voting on Ethereum — actual contracts exist in the External Chains demo and are not deployed.</div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <h3>Create proposal</h3>
+        <div class="form-group">
+          <label for="propTitle">Title</label>
+          <input id="propTitle" placeholder="Authorize recovery" />
+        </div>
+        <div class="form-group">
+          <label for="propDesc">Description</label>
+          <input id="propDesc" placeholder="What is being voted on" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="propOptions">Options</label>
+            <input id="propOptions" value="YES, NO" />
+          </div>
+          <div class="form-group">
+            <label for="propVaultId">Vault</label>
+            <select id="propVaultId"><option value="">— none (generic proposal) —</option></select>
+          </div>
+        </div>
+        <button class="btn" onclick="createProposal()">Create proposal</button>
+      </div>
+
+      <div class="panel">
+        <h3>Cast a vote</h3>
+        <div class="form-group">
+          <label for="voteProposalId">Proposal</label>
+          <select id="voteProposalId"></select>
+        </div>
+        <div class="form-group" style="max-width:220px">
+          <label for="voteOption">Option</label>
+          <select id="voteOption"></select>
+        </div>
+        <button class="btn" onclick="castVote()">Cast vote</button>
+      </div>
+    </div>
+
+    <h2>Proposals</h2>
+    <div class="table-wrap" id="propTable">
+      <div class="empty">No proposals yet.</div>
+    </div>
+
+    <h2>Results</h2>
+    <div class="panel">
+      <div class="form-group" style="max-width:360px">
+        <label for="resultProposalId">Proposal</label>
+        <select id="resultProposalId"></select>
+      </div>
+      <button class="btn btn-secondary" onclick="viewResult()">View result</button>
+    </div>
+
+    <div id="result"></div>
+  </div>
+  <script type="module" src="js/shell.js"></script>
+  <script src="js/api.js"></script>
+  <script type="module">
+    import { renderShell } from "./js/shell.js";
+    renderShell("voting.html");
+
+    const user = (() => { try { return JSON.parse(localStorage.getItem('user') || 'null'); } catch { return null; } })();
+
+    let proposals = [];
+    let vaults = [];
+
+    function show(res) { document.getElementById('result').innerHTML = '<pre>' + JSON.stringify(res, null, 2) + '</pre>'; }
+    function short(id) { return id ? (id.length > 14 ? id.slice(0, 8) + '…' + id.slice(-6) : id) : ''; }
+
+    async function load() {
+      const [pr, vr] = await Promise.all([
+        api.get('/api/voting'),
+        user ? api.get('/api/vault?userId=' + encodeURIComponent(user.id)) : Promise.resolve({ vaults: [] }),
+      ]);
+      proposals = pr.proposals || [];
+      vaults = vr.vaults || [];
+
+      const propSelect = '<option value="">No proposals yet</option>';
+
+      const voteSel = document.getElementById('voteProposalId');
+      const resultSel = document.getElementById('resultProposalId');
+      const optionsHtml = proposals.length
+        ? proposals.map(p => '<option value="' + p.id + '">' + short(p.id) + ' — ' + esc(p.title) + ' (' + (p.votes || []).length + ' votes)</option>').join('')
+        : propSelect;
+      voteSel.innerHTML = optionsHtml;
+      resultSel.innerHTML = optionsHtml;
+      reflectOptions();
+
+      const vaultSel = document.getElementById('propVaultId');
+      vaultSel.innerHTML = '<option value="">— none (generic proposal) —</option>' +
+        vaults.map(v => '<option value="' + v.id + '">' + short(v.id) + ' (' + v.status + ')</option>').join('');
+
+      document.getElementById('propTable').innerHTML = proposals.length
+        ? '<table><thead><tr><th>Proposal</th><th>Title</th><th>Status</th><th>Votes</th></tr></thead><tbody>' +
+          proposals.map(p => '<tr><td class="mono">' + short(p.id) + '</td><td>' + esc(p.title) + '</td><td><span class="chip chip-' + (p.status === 'ACTIVE' ? 'AWAITING_SHARES' : 'COMPLETED') + '">' + p.status + '</span></td><td>' + (p.votes || []).length + '</td></tr>').join('') +
+          '</tbody></table>'
+        : '<div class="empty">No proposals yet.</div>';
+    }
+
+    function reflectOptions() {
+      const pid = document.getElementById('voteProposalId').value;
+      const p = proposals.find(x => x.id === pid);
+      document.getElementById('voteOption').innerHTML = (p && p.options ? p.options : ['YES', 'NO'])
+        .map(o => '<option value="' + esc(o) + '">' + esc(o) + '</option>').join('');
+    }
+    document.getElementById('voteProposalId').addEventListener('change', reflectOptions);
+
+    window.createProposal = async function () {
+      show(await api.post('/api/voting/proposal', {
+        title: document.getElementById('propTitle').value,
+        description: document.getElementById('propDesc').value,
+        options: document.getElementById('propOptions').value.split(',').map(s => s.trim()).filter(Boolean),
+        vaultId: document.getElementById('propVaultId').value || undefined,
+      }));
+      load();
+    };
+
+    window.castVote = async function () {
+      show(await api.post('/api/voting/vote', {
+        proposalId: document.getElementById('voteProposalId').value,
+        option: document.getElementById('voteOption').value,
+      }));
+      load();
+    };
+
+    window.viewResult = async function () {
+      show(await api.get('/api/voting/' + encodeURIComponent(document.getElementById('resultProposalId').value) + '/result'));
+    };
+
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+    load();
+  </script>
+</body>
+</html>

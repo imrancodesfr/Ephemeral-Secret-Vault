@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>External Chains - Ephemeral Vault</title>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+  <div id="shell-slots">
+    <div class="page-header">
+      <h1>Ethereum <span class="chip chip-AWAITING_SHARES">DEMO</span></h1>
+      <p>Optional integration with Ethereum (Ganache) and Hyperledger Fabric. Both are demonstrations and clearly labeled as such — the core product runs on the local simulated blockchain.</p>
+    </div>
+
+    <div class="honesty-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div><b>Truth in labeling:</b> Ethereum contracts are compiled-ready Solidity source and connect to a local Ganache node only if it is running; they are not deployed to any public network. Hyperledger Fabric is an in-process JavaScript simulation (no real Fabric network required).</div>
+    </div>
+
+    <h2>Ethereum (Ganache)</h2>
+    <div id="eth-status" class="card"><span class="muted">Checking…</span></div>
+
+    <h2>Hyperledger Fabric simulator</h2>
+    <div id="fabric-status" class="card"><span class="muted">Checking…</span></div>
+
+    <h2>Contract sources (read-only)</h2>
+    <div class="form-group" style="max-width:360px">
+      <label for="contractName">Contract</label>
+      <select id="contractName">
+        <option value="secretvault">SecretVault.sol</option>
+        <option value="voting">Voting.sol</option>
+        <option value="supplychain">SupplyChain.sol</option>
+      </select>
+    </div>
+    <button class="btn" onclick="viewSource()">View source</button>
+    <pre id="source-box" class="card mono" style="margin-top:12px;white-space:pre-wrap;display:none"></pre>
+  </div>
+  <script type="module" src="js/shell.js"></script>
+  <script src="js/api.js"></script>
+  <script type="module">
+    import { renderShell } from "./js/shell.js";
+    renderShell("ethereum.html");
+
+    async function loadEth() {
+      const s = await api.get('/api/ethereum/status');
+      const box = document.getElementById('eth-status');
+      if (s.connected) {
+        box.innerHTML =
+          '<div style="display:flex;gap:24px;flex-wrap:wrap">' +
+            '<div><div class="label">Status</div><div class="value" style="color:var(--success)">CONNECTED</div></div>' +
+            '<div><div class="label">Deployed</div><div class="value" style="color:var(--warning)">NO — source only</div></div>' +
+            '<div><div class="label">Network</div><div><span class="mono">' + esc(s.network) + '</span></div></div>' +
+            '<div><div class="label">Chain ID</div><div>' + s.chainId + '</div></div>' +
+            '<div><div class="label">Accounts</div><div>' + s.accountCount + '</div></div>' +
+          '</div>' +
+          '<h3 style="margin-top:14px">Accounts</h3><table><thead><tr><th>Address</th><th>Balance (ETH)</th></tr></thead><tbody>' +
+          (s.accounts || []).map(a => '<tr><td class="mono">' + a.address + '</td><td>' + a.balanceEth + '</td></tr>').join('') +
+          '</tbody></table>' +
+          '<h3 style="margin-top:14px">Contracts (source only — not deployed)</h3>' + contractList(s.contracts);
+      } else {
+        box.innerHTML =
+          '<div style="display:flex;gap:24px;flex-wrap:wrap"><div><div class="label">Status</div><div class="value" style="color:var(--warning)">OFFLINE</div></div>' +
+          '<div><div class="label">Deployed</div><div class="value" style="color:var(--warning)">NO</div></div></div>' +
+          '<p>Ganache is not running at ' + esc(s.network || '') + ' and no Ethereum node is reachable, so the demo reports <b>OFFLINE</b>. Start Ganache (v2/v3) on port 7545 and it will connect automatically on the next check. Nothing is ever deployed to a public chain.</p>' +
+          '<p class="muted">' + esc(s.error || '') + '</p>' +
+          '<h3 style="margin-top:14px">Contracts (source only — not deployed)</h3>' + contractList(s.contracts || []);
+      }
+    }
+
+    function contractList(contracts) {
+      if (!contracts || !contracts.length) return '<p class="muted">No contract metadata.</p>';
+      return '<table><thead><tr><th>File</th><th>Purpose</th></tr></thead><tbody>' +
+        contracts.map(c => '<tr><td class="mono">' + c.file + '</td><td>' + esc(c.purpose || '') + '</td></tr>').join('') +
+        '</tbody></table>';
+    }
+
+    async function loadFabric() {
+      const s = await api.get('/api/fabric/status');
+      const box = document.getElementById('fabric-status');
+      box.innerHTML =
+        '<div style="display:flex;gap:24px;flex-wrap:wrap">' +
+          '<div><div class="label">Mode</div><div class="value" style="color:var(--warning)">SIMULATION</div></div>' +
+          '<div><div class="label">Orgs</div><div>' + (s.orgs || []).length + '</div></div>' +
+          '<div><div class="label">Peers</div><div>' + (s.peers || []).length + '</div></div>' +
+          '<div><div class="label">Channels</div><div>' + (s.channels || []).length + '</div></div>' +
+        '</div>' +
+        '<p style="margin-top:10px">This mirrors Hyperledger Fabric concepts (a channel-based ledger, chaincode "assets", and per-ledger history) entirely inside Node.js. No Docker, no cafiles, no real ordering service.</p>';
+      try {
+        const cc = await api.get('/api/fabric/chaincodes');
+        box.innerHTML += '<h3 style="margin-top:14px">Chaincodes: ' + (cc.chaincodes || []).map(c => '<span class="chip chip-COMPLETED">' + c.name + '</span>').join(' ') + '</h3>';
+      } catch (e) {}
+    }
+
+    window.viewSource = async function () {
+      const name = document.getElementById('contractName').value;
+      const res = await api.get('/api/ethereum/contract/' + name);
+      const box = document.getElementById('source-box');
+      if (res.source) { box.style.display = 'block'; box.textContent = res.source; }
+      else { box.style.display = 'block'; box.textContent = res.error || 'Not found'; }
+    };
+
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+    loadEth();
+    loadFabric();
+  </script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supply Chain - Ephemeral Vault</title>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+  <div id="shell-slots">
+    <div class="page-header">
+      <h1>Supply Chain</h1>
+      <p>Track assets and their custody history, with every state transition recorded on the local blockchain.</p>
+    </div>
+
+    <div class="honesty-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div>A Web2 asset registry with local blockchain transaction records. The Hyperledger Fabric version of this capability is simulated (see External Chains).</div>
+    </div>
+
+    <div class="grid-3">
+      <div class="panel">
+        <h3>Create asset</h3>
+        <div class="form-group">
+          <label for="assetId">Asset ID</label>
+          <input id="assetId" placeholder="AST-2F8810CE" />
+        </div>
+        <div class="form-group">
+          <label for="assetName">Name</label>
+          <input id="assetName" placeholder="Master seed document" />
+        </div>
+        <div class="form-group">
+          <label for="assetDesc">Description</label>
+          <input id="assetDesc" placeholder="Optional detail" />
+        </div>
+        <button class="btn" onclick="createAsset()">Create</button>
+      </div>
+
+      <div class="panel">
+        <h3>Transfer custody</h3>
+        <div class="form-group">
+          <label for="transferAssetId">Asset</label>
+          <select id="transferAssetId"></select>
+        </div>
+        <div class="form-group">
+          <label for="fromOrg">Current custodian (from)</label>
+          <input id="fromOrg" readonly placeholder="Pick an asset above" />
+        </div>
+        <div class="form-group">
+          <label for="toOrg">To (registered account)</label>
+          <select id="toOrg"><option value="">— pick a registered account —</option></select>
+        </div>
+        <p class="muted pick-note">Only the current custodian can transfer, and only to an account registered on this site — names are never free-typed.</p>
+        <button class="btn" onclick="transferAsset()">Transfer</button>
+      </div>
+
+      <div class="panel">
+        <h3>History</h3>
+        <div class="form-group">
+          <label for="historyAssetId">Asset</label>
+          <select id="historyAssetId"></select>
+        </div>
+        <button class="btn btn-secondary" onclick="loadHistory()">View history</button>
+      </div>
+    </div>
+
+    <h2>Tracked assets</h2>
+    <div class="table-wrap" id="assetList"></div>
+
+    <div id="result"></div>
+  </div>
+  <script type="module" src="js/shell.js"></script>
+  <script src="js/api.js"></script>
+  <script type="module">
+    import { renderShell } from "./js/shell.js";
+    renderShell("supply-chain.html");
+
+    const user = (() => { try { return JSON.parse(localStorage.getItem('user') || 'null'); } catch { return null; } })();
+
+    function show(res) { document.getElementById('result').innerHTML = '<pre>' + JSON.stringify(res, null, 2) + '</pre>'; }
+    function short(s) { return s ? (s.length > 14 ? s.slice(0, 8) + '…' + s.slice(-4) : s) : ''; }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+    function partyName(h) { return h && h.toName ? h.toName : (h && h.to && h.to.name ? h.to.name : (h && h.to ? h.to : '—')); }
+
+    let assets = [];
+    let users = [];
+
+    async function loadUsers() {
+      try {
+        const res = await api.get('/api/auth/users');
+        users = (res.users || []).map(u => ({ id: u.id, name: u.name, email: u.email }));
+      } catch (e) { users = []; }
+    }
+
+    function fillToDropdown() {
+      const sel = document.getElementById('toOrg');
+      const holderId = currentHolderId();
+      const opts = users
+        .filter(u => u.id !== holderId)
+        .map(u => '<option value="' + esc(u.id) + '">' + esc(u.name + ' — ' + u.email) + '</option>')
+        .join('');
+      sel.innerHTML = '<option value="">— pick a registered account —</option>' + opts;
+    }
+
+    function currentHolderId() {
+      const sel = document.getElementById('transferAssetId');
+      const a = assets.find(x => x.assetId === sel.value);
+      const last = a && a.history ? a.history[a.history.length - 1] : null;
+      return last && last.to ? (typeof last.to === 'object' ? last.to.id : last.to) : null;
+    }
+
+    async function loadAssets(selectAssetId) {
+      const res = await api.get('/api/supply-chain/all');
+      assets = res.assets || [];
+
+      const transferSel = document.getElementById('transferAssetId');
+      const historySel = document.getElementById('historyAssetId');
+      const opts = assets.length
+        ? assets.map(a => '<option value="' + a.assetId + '">' + short(a.assetId) + ' — ' + esc(a.name || '') + '</option>').join('')
+        : '<option value="">No assets yet</option>';
+      transferSel.innerHTML = opts;
+      historySel.innerHTML = opts;
+      if (selectAssetId) transferSel.value = selectAssetId;
+
+      if (user) syncTransferPanel(transferSel.value);
+
+      const wrap = document.getElementById('assetList');
+      if (assets.length === 0) { wrap.innerHTML = '<div class="empty">No assets tracked.</div>'; return; }
+      let rows = '';
+      assets.forEach(a => {
+        const last = (a.history || [])[a.history.length - 1] || {};
+        rows += '<tr>' +
+          '<td class="mono">' + short(a.assetId) + '</td>' +
+          '<td>' + esc(a.name) + '</td>' +
+          '<td><span class="chip chip-' + (a.status === 'VERIFIED' ? 'COMPLETED' : 'AWAITING_SHARES') + '">' + esc(a.status) + '</span></td>' +
+          '<td class="muted">' + esc(partyName(last) || '-') + '</td>' +
+          '<td class="muted">' + esc(last.timestamp ? new Date(last.timestamp).toLocaleTimeString() : '-') + '</td>' +
+          '</tr>';
+      });
+      wrap.innerHTML = '<table><thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Current custodian</th><th>Updated</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+
+    function syncTransferPanel(assetId) {
+      const a = assets.find(x => x.assetId === assetId);
+      document.getElementById('fromOrg').value = '';
+      if (a && a.history && a.history.length) {
+        document.getElementById('fromOrg').value = partyName(a.history[a.history.length - 1]);
+      }
+      fillToDropdown();
+    }
+
+    document.getElementById('transferAssetId').addEventListener('change', () => {
+      if (!user) { document.getElementById('fromOrg').value = ''; fillToDropdown(); return; }
+      syncTransferPanel(document.getElementById('transferAssetId').value);
+    });
+
+    window.createAsset = async function () {
+      if (!user) { show({ error: 'Please sign in to create assets — the creator must be an account on this site.' }); return; }
+      const assetId = document.getElementById('assetId').value;
+      if (!assetId) { show({ error: 'Asset ID is required' }); return; }
+      const res = await api.post('/api/supply-chain/create', {
+        assetId,
+        name: document.getElementById('assetName').value,
+        description: document.getElementById('assetDesc').value,
+      });
+      show(res);
+      await loadAssets(res && res.asset ? res.asset.assetId : undefined);
+    };
+
+    window.transferAsset = async function () {
+      if (!user) { show({ error: 'Please sign in to transfer assets.' }); return; }
+      const to = document.getElementById('toOrg').value;
+      if (!to) { show({ error: 'Pick a registered account to transfer to — free-typed names are not accepted.' }); return; }
+      show(await api.post('/api/supply-chain/transfer', {
+        assetId: document.getElementById('transferAssetId').value,
+        to,
+      }));
+      loadAssets();
+    };
+
+    window.loadHistory = async function () {
+      const id = document.getElementById('historyAssetId').value;
+      if (!id) { show({ error: 'Pick an asset first' }); return; }
+      show(await api.get('/api/supply-chain/' + encodeURIComponent(id) + '/history'));
+    };
+
+    loadAssets();
+    if (user) loadUsers();
+  </script>
+</body>
+</html>

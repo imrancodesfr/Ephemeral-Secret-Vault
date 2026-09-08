@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hyperledger Fabric Demo - Ephemeral Vault</title>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+  <div id="shell-slots">
+    <div class="page-header">
+      <h1>Hyperledger Fabric <span class="chip chip-AWAITING_SHARES">SIMULATION</span></h1>
+      <div class="actions">
+        <button class="btn btn-sm" onclick="refresh()">Refresh status</button>
+      </div>
+    </div>
+
+    <div class="honesty-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div>This page mirrors Hyperledger Fabric concepts — a channel-based ledger, chaincode "assets", and per-ledger history — entirely inside Node.js. <b>No real Fabric network exists</b>: no ordering service, peer daemons, or CAs. Nothing here is deployed anywhere.</div>
+    </div>
+
+    <h2>Network</h2>
+    <div id="network-status" class="card"><span class="muted">Loading…</span></div>
+
+    <h2>Channels</h2>
+    <div id="channels" class="card"><span class="muted">Loading…</span></div>
+
+    <h2>Chaincodes</h2>
+    <div id="chaincodes" class="card"><span class="muted">Loading…</span></div>
+
+    <h2>Chaincode console</h2>
+    <div class="grid-2">
+      <div class="panel">
+        <h3>Invoke</h3>
+        <div class="form-group">
+          <label for="ccName">Chaincode</label>
+          <select id="ccName"></select>
+        </div>
+        <div class="form-group">
+          <label for="ccFn">Function</label>
+          <select id="ccFn">
+            <option value="createAsset">createAsset</option>
+            <option value="readAsset">readAsset</option>
+            <option value="updateAsset">updateAsset</option>
+            <option value="deleteAsset">deleteAsset</option>
+            <option value="getAllAssets">getAllAssets</option>
+            <option value="getHistory">getHistory</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="ccAssetId">Asset ID</label>
+          <input id="ccAssetId" placeholder="doc-001" />
+        </div>
+        <div class="form-group">
+          <label for="ccData">Data (JSON)</label>
+          <textarea id="ccData" rows="3" placeholder='{&quot;owner&quot;:&quot;UniversityOrg&quot;,&quot;hash&quot;:&quot;sha256:abc…&quot;}'></textarea>
+        </div>
+        <button class="btn" onclick="invoke()">Submit</button>
+        <div id="invoke-result"></div>
+      </div>
+
+      <div class="panel">
+        <h3>Channel ledger</h3>
+        <div class="form-group">
+          <label for="ledgerChannel">Channel</label>
+          <select id="ledgerChannel"></select>
+        </div>
+        <button class="btn btn-secondary" onclick="viewLedger()">View ledger</button>
+        <div id="ledger-result"></div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="js/shell.js"></script>
+  <script src="js/api.js"></script>
+  <script type="module">
+    import { renderShell } from "./js/shell.js";
+    import { requireAuth, toast } from "./js/ui.js";
+    renderShell("fabric.html");
+
+    const user = requireAuth();
+    if (user) refresh();
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function refresh() {
+      const s = await api.get('/api/fabric/status');
+      if (s.error) { document.getElementById('network-status').innerHTML = '<span class="muted">' + esc(s.error) + '</span>'; return; }
+
+      document.getElementById('network-status').innerHTML =
+        '<div style="display:flex;gap:24px;flex-wrap:wrap">' +
+          '<div><div class="label">Mode</div><div class="value" style="color:var(--warning)">SIMULATION</div></div>' +
+          '<div><div class="label">Network</div><div class="value"><span class="mono">' + esc(s.networkName) + '</span></div></div>' +
+          '<div><div class="label">Orgs</div><div class="value">3</div></div>' +
+          '<div><div class="label">Peers</div><div class="value">' + (s.peers || []).length + '</div></div>' +
+        '</div>';
+
+      const peers = (s.peers || []).map((p) => '<tr><td class="mono">' + esc(p.name) + '</td><td>' + esc(p.organization) + '</td><td>' + (p.status || 'connected') + '</td></tr>').join('');
+      (s.peers || []).length
+        ? document.getElementById('network-status').innerHTML += '<h3 style="margin-top:14px">Peers</h3><table><thead><tr><th>Peer</th><th>Org</th><th>State</th></tr></thead><tbody>' + peers + '</tbody></table>'
+        : document.getElementById('network-status').innerHTML += '<p class="muted">No peers reported.</p>';
+
+      const chans = (s.channels || []).map((ch) => '<tr><td class="mono">' + esc(ch.name) + '</td><td>' + (ch.organizations || []).join(', ') + '</td><td>' + (ch.peerCount ?? (ch.peers || []).length) + '</td></tr>').join('');
+      document.getElementById('channels').innerHTML =
+        (chans ? '<table><thead><tr><th>Channel</th><th>Organizations</th><th>Peers</th></tr></thead><tbody>' + chans + '</tbody></table>' : '<span class="muted">No channels.</span>');
+
+      const ccs = (s.chaincodes || []).map((cc) => '<tr><td class="mono">' + esc(cc.name) + '</td><td>' + esc(cc.version) + '</td><td class="mono">' + esc(cc.channel) + '</td><td>' + (cc.assetCount ?? '-') + ' assets</td><td>' + (cc.transactionCount ?? '-') + ' TXs</td></tr>').join('');
+      document.getElementById('chaincodes').innerHTML =
+        (ccs ? '<table><thead><tr><th>Chaincode</th><th>Version</th><th>Channel</th><th>Assets</th><th>TXs</th></tr></thead><tbody>' + ccs + '</tbody></table>' : '<span class="muted">No chaincodes.</span>');
+
+      const ccSel = document.getElementById('ccName');
+      if (!ccSel.options.length) {
+        (s.chaincodes || []).forEach((cc) => {
+          ccSel.add(new Option(cc.name, cc.name));
+        });
+      }
+      const ledSel = document.getElementById('ledgerChannel');
+      if ((s.channels || []).length && !ledSel.options.length) {
+        (s.channels || []).forEach((ch) => {
+          ledSel.add(new Option(ch.name, ch.name));
+        });
+      }
+    }
+
+    window.invoke = async function () {
+      const chaincode = document.getElementById('ccName').value;
+      const fn = document.getElementById('ccFn').value;
+      const assetId = document.getElementById('ccAssetId').value;
+      let args = {};
+      try {
+        const raw = document.getElementById('ccData').value;
+        if (raw.trim()) args = JSON.parse(raw);
+      } catch (e) { toast('Invalid JSON in data field', 'error'); return; }
+
+      if (fn !== 'getAllAssets' && fn !== 'getHistory' && !assetId && fn !== 'createAsset') {
+        toast('Asset ID is required for ' + fn, 'error'); return;
+      }
+      const payload = { chaincode, function: fn, args };
+      if (assetId) payload.args = { ...args, assetId };
+
+      const res = await api.post('/api/fabric/invoke', payload);
+      if (res.success) { toast(fn + ' executed on ' + chaincode, 'success'); showJson('invoke-result', res.result); }
+      else showJson('invoke-result', { error: res.error });
+      refresh();
+    };
+
+    window.viewLedger = async function () {
+      const channel = document.getElementById('ledgerChannel').value;
+      const res = await api.get('/api/fabric/channel/' + encodeURIComponent(channel));
+      showJson('ledger-result', res);
+    };
+
+    function showJson(id, obj) {
+      const box = document.getElementById(id);
+      if (box) box.innerHTML = '<pre class="card mono" style="margin-top:12px;white-space:pre-wrap">' + esc(JSON.stringify(obj, null, 2)) + '</pre>';
+    }
+  </script>
+</body>
+</html>

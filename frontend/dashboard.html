@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Ephemeral Vault</title>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+  <div id="shell-slots">
+    <div class="page-header">
+      <h1>Dashboard</h1>
+      <div class="actions">
+        <a href="create-vault.html" class="btn btn-sm">+ New vault</a>
+      </div>
+    </div>
+
+    <div id="user-info" class="card mb-16"></div>
+
+    <h2>Security &amp; audit status</h2>
+    <div id="security-card" class="card"><span class="muted">Loading security status…</span></div>
+
+    <h2>Active vaults <span id="active-count" class="badge badge-info">0</span></h2>
+    <p class="pick-note" style="margin-top:-6px">Vaults sorted by urgency — the ones closest to expiry first. Renew before the deadline or the dead man's switch fires.</p>
+    <div class="table-wrap" id="vault-table"></div>
+
+    <h2>Recovery required <span id="recovery-count" class="badge badge-warning">0</span></h2>
+    <div class="table-wrap" id="recovery-table"></div>
+
+    <h2>Recovered (sealed)</h2>
+    <div id="recovered-note" class="muted">Loading…</div>
+  </div>
+  <script type="module" src="js/shell.js"></script>
+  <script src="js/api.js"></script>
+  <script type="module">
+    import { renderShell } from "./js/shell.js";
+    import { toast, getUser, requireAuth, idWithCopy, copyText } from "./js/ui.js";
+    renderShell("dashboard.html");
+    window.__copy = copyText;
+
+    const user = requireAuth();
+    if (user) {
+      document.getElementById('user-info').innerHTML =
+        '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+        '<span class="chip chip-ACTIVE">' + user.role + '</span>' +
+        '<span><strong>' + user.name + '</strong> &middot; ' + user.email + '</span>' +
+        '</div>';
+      load();
+    }
+
+    async function load() {
+      const [vaultRes, mining, health, chain, eth] = await Promise.all([
+        api.get('/api/vault'),
+        api.get('/api/mining/status'),
+        api.get('/api/health'),
+        api.get('/api/blockchain/validate'),
+        api.get('/api/ethereum/status'),
+      ]);
+
+      const vaults = vaultRes.vaults || [];
+      const now = Date.now();
+
+      renderSecurity({ health, mining, chain, eth });
+
+      const active = vaults.filter(v => v.status === 'ACTIVE').sort((a, b) => (a.expiryTimestamp || 0) - (b.expiryTimestamp || 0));
+      const recoveryMode = vaults.filter(v => v.status === 'RECOVERY_MODE');
+      const recovered = vaults.filter(v => v.status === 'RECOVERED');
+
+      document.getElementById('active-count').textContent = active.length;
+      document.getElementById('recovery-count').textContent = recoveryMode.length;
+
+      renderActive(active, now);
+      renderRecovery(recoveryMode);
+      document.getElementById('recovered-note').innerHTML = recovered.length
+        ? '<p>' + recovered.length + ' vault(s) have been recovered and are permanently sealed (the secret no longer exists, only the audit trail). <a href="vaults.html">See all vaults</a>.</p>'
+        : '<p>No recovered vaults yet. Recovered secrets are destroyed after delivery — nothing to display.</p>';
+    }
+
+    function renderSecurity({ health, mining, chain, eth }) {
+      const enc = health.encryption || {};
+      const encryptedCustody = enc.persistent ? 'Held in environment (.env)' : 'EPHEMERAL — resets each restart';
+      const chainOk = chain && chain.valid;
+      const ethOk = eth && eth.connected;
+
+      document.getElementById('security-card').innerHTML =
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px">' +
+          securityItem('Simulation', health.simulationMode === undefined ? 'ON' : (health.simulationMode ? 'ON' : 'OFF'), 'warn') +
+          securityItem('Encryption key', encryptedCustody, enc.persistent ? 'ok' : 'warn') +
+          securityItem('Audit chain (PoW)', chainOk ? 'VALID' : 'TAMPERED', chainOk ? 'ok' : 'bad') +
+          securityItem('Ethereum RPC', ethOk ? 'CONNECTED' : 'OFFLINE', ethOk ? 'ok' : 'warn') +
+        '</div>' +
+        '<div class="muted" style="margin-top:10px;font-size:13px">' +
+          (enc.legacyKeyFilePresent
+            ? '<span style="color:var(--danger)">Legacy key file found next to the database is IGNORED — delete it. </span>'
+            : '') +
+          'The master key is never stored beside the database. The audit chain is a local, single-node simulation; Ethereum connects only to a local Ganache node if it is running. <a href="profile.html">View full security status</a>.</div>';
+    }
+
+    function securityItem(label, value, state) {
+      const color = state === 'ok' ? 'var(--success)' : state === 'warn' ? 'var(--warning)' : 'var(--danger)';
+      return '<div><div class="label">' + label + '</div><div style="color:' + color + ';font-weight:600">' + value + '</div></div>';
+    }
+
+    function renderActive(active, now) {
+      const box = document.getElementById('vault-table');
+      if (!active.length) {
+        box.innerHTML = '<div class="empty">No active vaults involve you. <a href="create-vault.html">Create one</a>, or ask someone to add you as a guardian or recipient.</div>';
+        return;
+      }
+      let rows = '';
+      active.forEach(v => {
+        const timeLeft = Math.max(0, v.expiryTimestamp - now);
+        const mins = Math.floor(timeLeft / 60000);
+        const urgent = mins <= 3;
+        const expiryText = urgent ? '<span style="color:var(--danger);font-weight:600">' + mins + 'm left — renew now</span>' : (mins > 0 ? mins + 'm left' : 'expired');
+
+        let role = 'Guardian';
+        if (v.ownerId === user.id) role = 'Owner';
+        else if (v.recoveryRecipient === user.id) role = 'Recipient';
+
+        const renewBtn = (v.ownerId === user.id)
+          ? '<button class="btn btn-sm" onclick="window.__renew(\'' + v.id + '\', this)">Renew</button>'
+          : '';
+
+        rows += '<tr>' +
+          '<td style="min-width:150px">' + idWithCopy(v.id) + '</td>' +
+          '<td><span class="chip chip-ACTIVE">' + v.status + '</span>' + (urgent ? ' <span class="chip chip-RECOVERY_MODE">expiring</span>' : '') + '</td>' +
+          '<td>' + v.requiredShares + ' / ' + v.totalShares + '</td>' +
+          '<td>' + expiryText + '</td>' +
+          '<td>' + role + '</td>' +
+          '<td style="white-space:nowrap">' + renewBtn + '</td>' +
+          '</tr>';
+      });
+      box.innerHTML = '<table><thead><tr><th>Vault</th><th>Status</th><th>k / n</th><th>Time remaining</th><th>My role</th><th>Actions</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+
+    function renderRecovery(mode) {
+      const box = document.getElementById('recovery-table');
+      if (!mode.length) {
+        box.innerHTML = '<div class="empty">Nothing needs recovery right now. Keep renewing active vaults to avoid triggering the dead man\'s switch.</div>';
+        return;
+      }
+      let rows = '';
+      mode.forEach(v => {
+        let role = 'Guardian';
+        if (v.ownerId === user.id) role = 'Owner';
+        else if (v.recoveryRecipient === user.id) role = 'Recipient';
+
+        rows += '<tr>' +
+          '<td style="min-width:150px">' + idWithCopy(v.id) + '</td>' +
+          '<td><span class="chip chip-RECOVERY_MODE">RECOVERY_MODE</span></td>' +
+          '<td>' + v.requiredShares + ' / ' + v.totalShares + '</td>' +
+          '<td>' + role + '</td>' +
+          '<td><a class="btn btn-sm" href="recovery.html?vault=' + encodeURIComponent(v.id) + '">Go to recovery</a></td>' +
+          '</tr>';
+      });
+      box.innerHTML = '<table><thead><tr><th>Vault</th><th>Status</th><th>k / n</th><th>My role</th><th>Actions</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+
+    window.__renew = async function (id, btn) {
+      btn.disabled = true;
+      const res = await api.post('/api/vault/renew/' + id, {});
+      if (res.success) { toast('Vault renewed — dead man\'s switch reset', 'success'); load(); }
+      else { toast(res.error || 'Renew failed', 'error'); btn.disabled = false; }
+    };
+
+    window.__gotoRecovery = (id) => { window.location.href = 'recovery.html?vault=' + encodeURIComponent(id); };
+  </script>
+</body>
+</html>

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recovery - Ephemeral Vault</title>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+  <div id="shell-slots">
+    <div class="page-header">
+      <h1>Recovery</h1>
+      <p>Every step is pre-filled from your vaults and recoveries. Guardians submit the share they were given; no share is ever stored on the server.</p>
+    </div>
+
+    <div class="honesty-banner" style="border-color:var(--danger)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div><b>Recovery is one-time.</b> Once recovered, this vault is permanently sealed — the reconstructed secret is shown to you exactly once, then the ciphertext, every share copy, and the wrapped key are destroyed. A recovered vault can never be recovered again.</div>
+    </div>
+
+    <div class="wizard">
+      <div class="stepper" id="flow"></div>
+    </div>
+
+    <div class="tabs" style="margin-top:14px">
+      <button class="tab active" id="tab-activate" onclick="selectTab('activate')">1 · Activate</button>
+      <button class="tab" id="tab-share" onclick="selectTab('share')">2 · Submit shares</button>
+      <button class="tab" id="tab-status" onclick="selectTab('status')">3 · Verify threshold</button>
+      <button class="tab" id="tab-complete" onclick="selectTab('complete')">4 · Complete</button>
+    </div>
+
+    <div id="panel-activate" class="panel">
+      <h3>Activate recovery (dead man's switch)</h3>
+      <p class="pick-note">Owners and recipients may start recovery once a vault has passed its expiry time. Guardians are then notified to submit their shares.</p>
+      <div class="form-group" style="max-width:360px">
+        <label for="vaultId">Choose a vault</label>
+        <select id="vaultId"></select>
+      </div>
+      <button class="btn" onclick="activateRecovery()">Activate recovery</button>
+    </div>
+
+    <div id="panel-share" class="panel hidden">
+      <h3>Submit a guardian share</h3>
+      <div class="form-group" style="max-width:360px">
+        <label for="recoveryId">Recovery</label>
+        <select id="recoveryId"></select>
+      </div>
+      <div class="form-group">
+        <label>My guardian identity</label>
+        <div id="guardianId-static" class="muted"></div>
+      </div>
+
+      <div class="form-group">
+        <label>My share</label>
+        <textarea id="shareJson" rows="3" placeholder='Paste your share, e.g. {"x":2,"y":[...]} — from the notification you received when the vault was created'></textarea>
+        <div class="pick-note">Alternatively fill x and y separately:</div>
+        <div class="form-row">
+          <input id="shareX" type="number" placeholder="x" />
+          <input id="shareY" type="number" placeholder="y" />
+        </div>
+      </div>
+
+      <div class="card" style="margin:12px 0">
+        <h3 style="margin:0 0 8px">Restore my share from my inbox</h3>
+        <p class="pick-note">Each guardian's share was delivered once as a <b>SHARE_ISSUED</b> notification. It is removed from storage the first time this account retrieves it. If you still hold the copy, this fills your share in below.</p>
+        <button class="btn btn-sm" onclick="restoreShareFromInbox()" id="restore-btn">Pull my share from notifications</button>
+        <div id="inbox-hint" class="muted" style="margin-top:6px"></div>
+      </div>
+
+      <button class="btn" onclick="submitShare()">Submit share</button>
+    </div>
+
+    <div id="panel-status" class="panel hidden">
+      <h3>Verify threshold</h3>
+      <div class="form-group" style="max-width:360px">
+        <label for="statusRecoveryId">Recovery</label>
+        <select id="statusRecoveryId"></select>
+      </div>
+      <button class="btn" onclick="checkStatus()">Check status</button>
+      <div id="status-steps" class="steps"></div>
+    </div>
+
+    <div id="panel-complete" class="panel hidden">
+      <h3>Complete recovery — one-time delivery</h3>
+      <p class="pick-note">Once the required number of valid shares has been submitted, an authorized user can reconstruct. The recovered secret is shown <b>once</b>. Completing this step permanently seals the vault: the ciphertext, the wrapped key, and every retained share copy are destroyed.</p>
+      <div class="form-group" style="max-width:360px">
+        <label for="completeRecoveryId">Recovery</label>
+        <select id="completeRecoveryId"></select>
+      </div>
+      <button class="btn" onclick="completeRecovery()">Recover the secret once</button>
+    </div>
+
+    <div id="result"></div>
+  </div>
+  <script type="module" src="js/shell.js"></script>
+  <script src="js/api.js"></script>
+  <script type="module">
+    import { renderShell } from "./js/shell.js";
+    import { toast, getUser, requireAuth, handleError, idWithCopy, copyText } from "./js/ui.js";
+    renderShell("recovery.html");
+    window.__copy = copyText;
+
+    const user = requireAuth();
+
+    const FLOW = ['Activate', 'Submit shares', 'Verify threshold', 'Complete'];
+    function renderFlow(activeIdx) {
+      document.getElementById('flow').innerHTML = FLOW.map((label, i) => {
+        const cls = i < activeIdx ? 'done' : (i === activeIdx ? 'current' : '');
+        return '<div class="step ' + cls + '"><div class="step-dot">' + (i + 1) + '</div>' + label + '</div>';
+      }).join(' | ');
+    }
+    renderFlow(0);
+
+    window.selectTab = function (tab) {
+      const order = { activate: 0, share: 1, status: 2, complete: 3 };
+      ['activate', 'share', 'status', 'complete'].forEach(t => {
+        document.getElementById('panel-' + t).classList.add('hidden');
+        document.getElementById('tab-' + t).classList.remove('active');
+      });
+      document.getElementById('panel-' + tab).classList.remove('hidden');
+      document.getElementById('tab-' + tab).classList.add('active');
+      renderFlow(order[tab]);
+    };
+    window.selectTab('activate');
+
+    async function loadAll() {
+      if (!user) return;
+      const vs = await api.get('/api/vault');
+      const vaults = (vs.vaults || []).filter((v) => v.ownerId === user.id || v.recoveryRecipient === user.id);
+      const vsel = document.getElementById('vaultId');
+      vsel.innerHTML = vaults.length
+        ? vaults.map((v) => '<option value="' + v.id + '">' + short(v.id) + ' — ' + v.status + '</option>').join('')
+        : '<option value="">No vaults available</option>';
+
+      const rs = await api.get('/api/recovery/user/' + user.id);
+      const recs = (rs.recoveries || []).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      window.__recVault = {};
+      recs.forEach((r) => { window.__recVault[r.id] = r.vaultId; });
+      const opts = recs.length
+        ? recs.map((r) => '<option value="' + r.id + '">' + short(r.id) + ' — ' + r.status + ' (' + r.submittedShares + '/' + r.requiredShares + ')</option>').join('')
+        : '<option value="">No recoveries for you yet</option>';
+
+      ['recoveryId', 'statusRecoveryId', 'completeRecoveryId'].forEach((id) => {
+        document.getElementById(id).innerHTML = opts;
+      });
+
+      document.getElementById('guardianId-static').innerHTML = idWithCopy(user.id) + ' <span class="muted">(yours, auto-filled)</span>';
+    }
+
+    function short(id) { return id ? (id.length > 14 ? id.slice(0, 8) + '…' + id.slice(-6) : id) : ''; }
+
+    window.activateRecovery = async function () {
+      const id = document.getElementById('vaultId').value;
+      if (!id) { toast('Pick a vault first', 'error'); return; }
+      toast('Activating recovery mode…', 'info');
+      const res = await api.post('/api/vault/' + id + '/recovery', {});
+      if (res.recovery || res.success) {
+        toast('Recovery activated. Guardians were notified.', 'success');
+        selectTab('share');
+      } else {
+        handleError('result', res, 'Could not activate recovery');
+      }
+      show(res);
+    };
+
+    window.restoreShareFromInbox = async function () {
+      if (!user) return toast('Sign in first', 'error');
+      const recoveryId = document.getElementById('recoveryId').value;
+      const vaultId = recoveryId ? window.__recVault[recoveryId] : null;
+      if (!vaultId) { toast('Pick a recovery first', 'error'); return; }
+
+      const res = await api.get('/api/notifications/' + encodeURIComponent(user.id));
+      const notes = res.notifications || [];
+      const shareNote = notes.find((n) => n.type === 'SHARE_ISSUED' && n.vaultId === vaultId);
+      if (!shareNote) {
+        document.getElementById('inbox-hint').textContent = 'No SHARE_ISSUED notification found for this vault on this account. If you signed in with a different account, the share lives in that account’s inbox.';
+        return;
+      }
+      const m = (shareNote.body || '').match(/\{"x":\d+,"y":\[[\d,\s]*\}\]/);
+      if (!m) {
+        document.getElementById('inbox-hint').textContent = 'The share in this notification has already been consumed once (removed from storage). If you have a copy saved, paste it manually above.';
+        return;
+      }
+      const share = JSON.parse(m[0]);
+      document.getElementById('shareJson').value = JSON.stringify(share);
+      document.getElementById('shareX').value = share.x;
+      document.getElementById('shareY').value = JSON.stringify(share.y);
+      document.getElementById('inbox-hint').textContent = 'Loaded your share for vault ' + short(vaultId) + ' — review it and click “Submit share”. It was removed from storage by this read.';
+      toast('Share restored and consumed — it is no longer stored', 'info');
+    };
+
+    window.submitShare = async function () {
+      const recoveryId = document.getElementById('recoveryId').value;
+      if (!recoveryId) { toast('Pick a recovery first', 'error'); return; }
+      if (!user) { toast('Please sign in', 'error'); return; }
+
+      let shareData = null;
+      const jsonVal = document.getElementById('shareJson').value.trim();
+      if (jsonVal) {
+        try { shareData = JSON.parse(jsonVal); }
+        catch (e) { toast('The share JSON is not valid', 'error'); return; }
+      } else {
+        const x = parseInt(document.getElementById('shareX').value);
+        const yRaw = document.getElementById('shareY').value.trim();
+        let yArr;
+        try { yArr = JSON.parse(yRaw); }
+        catch (e) {
+          yArr = yRaw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+        }
+        if (isNaN(x) || !Array.isArray(yArr) || yArr.length === 0) { toast('Provide a share (JSON, or x and the y array)', 'error'); return; }
+        shareData = { x, y: yArr };
+      }
+
+      const res = await api.post('/api/recovery/share', { recoveryId, shareData });
+      if (res.success) {
+        const done = res.allSharesReady ? 'All shares ready — reconstruct now!' : (res.submittedCount + '/' + res.requiredCount + ' shares submitted');
+        toast('Share submitted. ' + done, 'success');
+        if (res.allSharesReady) selectTab('complete');
+        else selectTab('status');
+      } else {
+        handleError('result', res, 'Could not submit share');
+      }
+      show(res);
+    };
+
+    window.checkStatus = async function () {
+      const id = document.getElementById('statusRecoveryId').value;
+      if (!id) { toast('Pick a recovery first', 'error'); return; }
+      const res = await api.get('/api/recovery/' + id + '/status');
+      if (res.error) { handleError('result', res, 'Recovery not found'); }
+      else {
+        const steps = document.getElementById('status-steps');
+        const total = res.requiredShares || 2;
+        const done = res.submittedShares || 0;
+        let html = '';
+        for (let i = 1; i <= total; i++) {
+          const cls = i <= done ? 'done' : 'current';
+          html += '<div class="step ' + cls + '"><div class="step-dot">' + i + '</div>Share ' + i + '</div>';
+        }
+        steps.innerHTML = html + '<p class="pick-note" style="padding-top:8px">' + done + '/' + total + ' valid shares collected.</p>';
+        if (res.allSharesReady) selectTab('complete');
+      }
+      show(res);
+    };
+
+    window.completeRecovery = async function () {
+      const id = document.getElementById('completeRecoveryId').value;
+      if (!id) { toast('Pick a recovery first', 'error'); return; }
+      if (!user) { toast('Please sign in', 'error'); return; }
+      toast('Reconstructing the secret from valid shares…', 'info');
+      const res = await api.post('/api/recovery/' + id + '/complete', {});
+      if (res.secret) {
+        toast('Secret recovered successfully! The vault is now permanently sealed.', 'success', 8000);
+        document.getElementById('result').innerHTML =
+          '<div class="card">' +
+            '<h3>Secret recovered — one-time delivery</h3>' +
+            '<div class="share-warn"><div><b>The vault is now permanently sealed.</b> This secret was reconstructed once and is not stored anywhere. The ciphertext, the wrapped key, and every retained share copy were destroyed.</div></div>' +
+            '<div class="form-group"><label>Recovered secret</label><div class="mono" style="word-break:break-all">' + res.secret + '</div></div>' +
+          '</div>';
+        selectTab('complete');
+      } else {
+        handleError('result', res, 'Could not reconstruct');
+      }
+    };
+
+    function show(res) {
+      if (res.error) { document.getElementById('result').innerHTML = '<p class="error">' + res.error + '</p>'; return; }
+      const box = document.getElementById('result');
+      if (res.recovery || res.status) {
+        const r = res.recovery || res;
+        box.innerHTML =
+          '<div class="card"><h3>Result</h3>' +
+          '<div class="form-group"><label>Recovery ID</label><div>' + idWithCopy(r.id || r.recoveryId) + '</div></div>' +
+          '<div class="form-group"><label>Status</label><div><span class="chip chip-' + (r.status || 'AWAITING_SHARES') + '">' + (r.status || 'OK') + '</span></div></div>' +
+          (r.submittedCount !== undefined ? '<div class="form-group"><label>Shares</label><div>' + r.submittedCount + '/' + r.requiredCount + '</div></div>' : '') +
+          '</div>';
+      } else {
+        box.innerHTML = '<pre>' + JSON.stringify(res, null, 2) + '</pre>';
+      }
+    }
+
+    loadAll();
+  </script>
+</body>
+</html>

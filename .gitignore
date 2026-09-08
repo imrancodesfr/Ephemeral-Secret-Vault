@@ -1,0 +1,7 @@
+node_modules/
+backend/data/
+*.log
+.env
+.env.local
+backend/config/.encryption-key
+.DS_Store

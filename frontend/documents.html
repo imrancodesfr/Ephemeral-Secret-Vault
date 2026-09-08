@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document Notary - Ephemeral Vault</title>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+  <div id="shell-slots">
+    <div class="page-header">
+      <h1>Document Notary</h1>
+      <p>Register a cryptographic fingerprint (SHA-256 hash) of a document on the local blockchain, then verify that a copy is unmodified. The document content itself never goes on-chain.</p>
+    </div>
+
+    <div class="honesty-banner">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div>This demonstration hashes documents locally and stores the hash in both the SQLite database and local blockchain transactions. Keep the content yourself — only the fingerprint is notarized.</div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <h3>Register a document</h3>
+        <div class="form-group">
+          <label for="docName">Document name</label>
+          <input id="docName" placeholder="Will & testament — 2026" />
+        </div>
+        <div class="form-group">
+          <label for="docContent">Document content</label>
+          <textarea id="docContent" rows="6" placeholder="Paste the full text of the document you want to notarize"></textarea>
+        </div>
+        <p class="pick-note">Registered under <strong id="owner-label">your account</strong>.</p>
+        <button class="btn" onclick="registerDoc()">Register &amp; notarize</button>
+      </div>
+
+      <div class="panel">
+        <h3>Verify integrity</h3>
+        <div class="form-group">
+          <label for="docId">Notarized document</label>
+          <select id="docId"></select>
+        </div>
+        <div class="form-group">
+          <label for="verifyContent">Content to check</label>
+          <textarea id="verifyContent" rows="6" placeholder="Paste the copy of the document — any single change to the bytes changes the hash and the check fails"></textarea>
+        </div>
+        <button class="btn" onclick="verifyDoc()">Verify against record</button>
+      </div>
+    </div>
+
+    <h2>Notarized documents</h2>
+    <div class="table-wrap" id="docList">
+      <div class="empty">No documents registered.</div>
+    </div>
+
+    <div id="result"></div>
+  </div>
+  <script type="module" src="js/shell.js"></script>
+  <script src="js/api.js"></script>
+  <script type="module">
+    import { renderShell } from "./js/shell.js";
+    renderShell("documents.html");
+
+    const user = (() => { try { return JSON.parse(localStorage.getItem('user') || 'null'); } catch { return null; } })();
+
+    function show(res) { document.getElementById('result').innerHTML = '<pre>' + JSON.stringify(res, null, 2) + '</pre>'; }
+
+    async function loadDocs() {
+      const res = await api.get('/api/documents/all');
+      const docs = res.documents || [];
+      const docSel = document.getElementById('docId');
+      docSel.innerHTML = docs.length
+        ? docs.map(d => '<option value="' + d.id + '">' + docShort(d) + '</option>').join('')
+        : '<option value="">No documents registered yet</option>';
+
+      const wrap = document.getElementById('docList');
+      if (docs.length === 0) { wrap.innerHTML = '<div class="empty">No documents registered.</div>'; return; }
+      let rows = '';
+      docs.forEach(d => {
+        rows += '<tr>' +
+          '<td class="mono">' + short(d.id) + '</td>' +
+          '<td>' + esc(d.documentName) + '</td>' +
+          '<td class="mono">' + short(d.documentHash) + '</td>' +
+          '<td>' + new Date(d.timestamp).toLocaleString() + '</td>' +
+          '</tr>';
+      });
+      wrap.innerHTML = '<table><thead><tr><th>ID</th><th>Name</th><th>SHA-256</th><th>Notarized</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+
+    function short(s) { return s ? (s.length > 16 ? s.slice(0, 12) + '…' + s.slice(-4) : s) : ''; }
+    function docShort(d) { return d.documentName + ' (' + short(d.id) + ')'; }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+    window.registerDoc = async function () {
+      const docName = document.getElementById('docName').value;
+      const content = document.getElementById('docContent').value;
+      if (!docName || !content) { show({ error: 'Document name and content are required' }); return; }
+      show(await api.post('/api/documents/register', {
+        documentName: docName,
+        documentContent: content,
+      }));
+      loadDocs();
+    };
+
+    window.verifyDoc = async function () {
+      const documentId = document.getElementById('docId').value;
+      if (!documentId) { show({ error: 'Pick a notarized document first' }); return; }
+      show(await api.post('/api/documents/verify', {
+        documentId,
+        documentContent: document.getElementById('verifyContent').value,
+      }));
+    };
+
+    if (user) document.getElementById('owner-label').textContent = user.name + ' (' + user.id.slice(0, 8) + '…)';
+    loadDocs();
+  </script>
+</body>
+</html>

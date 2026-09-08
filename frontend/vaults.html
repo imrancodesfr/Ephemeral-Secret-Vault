@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Vaults - Ephemeral Vault</title>
+  <link rel="stylesheet" href="js/style.css">
+</head>
+<body>
+  <div id="shell-slots">
+    <div class="page-header">
+      <h1>My Vaults</h1>
+      <div class="actions">
+        <a href="create-vault.html" class="btn btn-sm">+ New vault</a>
+      </div>
+    </div>
+
+    <div class="toolbar" style="margin-bottom:14px">
+      <button class="btn btn-sm" data-filter="all">All</button>
+      <button class="btn btn-sm" data-filter="ACTIVE">Active</button>
+      <button class="btn btn-sm" data-filter="RECOVERY_MODE">In recovery</button>
+      <button class="btn btn-sm" data-filter="RECOVERED">Recovered</button>
+    </div>
+
+    <div id="vault-table" class="table-wrap"></div>
+  </div>
+  <script type="module" src="js/shell.js"></script>
+  <script src="js/api.js"></script>
+  <script type="module">
+    import { renderShell } from "./js/shell.js";
+    import { toast, requireAuth, idWithCopy, copyText } from "./js/ui.js";
+    renderShell("vaults.html");
+    window.__copy = copyText;
+
+    const user = requireAuth();
+    if (user) load();
+
+    let currentFilter = 'all';
+    document.querySelectorAll('[data-filter]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        currentFilter = btn.getAttribute('data-filter');
+        document.querySelectorAll('[data-filter]').forEach((b) => b.classList.remove('btn-secondary'));
+        if (currentFilter !== 'all') btn.classList.add('btn-secondary');
+      });
+    });
+
+    async function load() {
+      const res = await api.get('/api/vault');
+      const vaults = (res.vaults || []);
+      render(res);
+    }
+
+    function render(res) {
+      let vaults = (res.vaults || []).slice().sort((a, b) => (a.expiryTimestamp || 0) - (b.expiryTimestamp || 0));
+      if (currentFilter !== 'all') vaults = vaults.filter((v) => v.status === currentFilter);
+
+      const box = document.getElementById('vault-table');
+      if (!vaults.length) {
+        box.innerHTML = '<div class="empty">No vaults match this filter. <a href="create-vault.html">Create a vault</a>, or ask someone to add you as a guardian or recipient.</div>';
+        return;
+      }
+
+      const now = Date.now();
+      const rows = vaults.map((v) => {
+        const timeLeft = Math.max(0, (v.expiryTimestamp || 0) - now);
+        const mins = Math.floor(timeLeft / 60000);
+        const urgent = v.status === 'ACTIVE' && mins <= 3;
+        let lifecycle = '—';
+        if (v.status === 'ACTIVE') lifecycle = urgent ? '<span class="muted" style="color:var(--danger)">' + mins + 'm left (urgent)</span>' : (mins > 0 ? mins + 'm left' : 'expiring now');
+        if (v.status === 'RECOVERY_MODE') lifecycle = '<span class="muted">thousands of shares needed — recovery in progress</span>';
+        if (v.status === 'RECOVERY_MODE') lifecycle = '<span class="muted">recovery in progress</span>';
+        if (v.status === 'RECOVERED') lifecycle = '<span class="muted">sealed — secret no longer exists</span>';
+
+        let role = 'Guardian';
+        if (v.ownerId === user.id) role = 'Owner';
+        else if (v.recoveryRecipient === user.id) role = 'Recipient';
+
+        const renewBtn = (v.ownerId === user.id && v.status === 'ACTIVE')
+          ? '<button class="btn btn-sm" onclick="window.__renew(\'' + v.id + '\', this)">Renew</button>'
+          : '';
+        const recoverBtn = (v.status === 'RECOVERY_MODE')
+          ? '<a class="btn btn-sm btn-secondary" href="recovery.html?vault=' + encodeURIComponent(v.id) + '">Recovery</a>'
+          : '';
+        const viewBtn = '<a class="btn btn-sm btn-secondary" href="recovery.html?vault=' + encodeURIComponent(v.id) + '">View</a>';
+
+        return '<tr>' +
+          '<td style="min-width:150px">' + idWithCopy(v.id) + '</td>' +
+          '<td><span class="chip chip-' + v.status + '">' + v.status + '</span></td>' +
+          '<td>' + v.requiredShares + ' / ' + v.totalShares + '</td>' +
+          '<td>' + lifecycle + '</td>' +
+          '<td>' + role + '</td>' +
+          '<td style="white-space:nowrap">' + viewBtn + ' ' + renewBtn + ' ' + recoverBtn + '</td>' +
+          '</tr>';
+      }).join('');
+
+      box.innerHTML = '<table><thead><tr><th>Vault</th><th>Status</th><th>k / n</th><th>Lifecycle</th><th>My role</th><th>Actions</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+
+    window.__renew = async function (id, btn) {
+      btn.disabled = true;
+      const res = await api.post('/api/vault/renew/' + id, {});
+      if (res.success) { toast('Vault renewed — dead man\'s switch reset', 'success'); load(); }
+      else { toast(res.error || 'Renew failed', 'error'); btn.disabled = false; }
+    };
+  </script>
+</body>
+</html>
