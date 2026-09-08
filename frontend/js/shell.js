@@ -92,12 +92,17 @@ export function renderShell(activePage) {
     const u = JSON.parse(localStorage.getItem('user') || 'null');
     const box = document.getElementById('sidebar-user');
     if (u && box) {
-      const roleLabel = (u.role || 'OWNER').toLowerCase().replace('_', ' ');
+      const role = (u.role || 'OWNER').toUpperCase();
+      const roleCls = role === 'OWNER' ? 'role-owner' : (role === 'GUARDIAN' ? 'role-guardian' : 'role-recipient');
+      const shortId = u.id ? (u.id.length > 12 ? u.id.slice(0, 6) + '…' + u.id.slice(-4) : u.id) : '';
       box.innerHTML =
         '<div class="user-avatar">' + (u.name || '?')[0].toUpperCase() + '</div>' +
         '<div class="user-meta">' +
-        '<div class="user-name">' + u.name + '</div>' +
-        '<div class="user-role">' + roleLabel + '</div>' +
+        '<div class="user-name">' + (u.name || 'User') + '</div>' +
+        '<div style="display:flex;gap:6px;align-items:center;margin-top:3px;flex-wrap:wrap">' +
+        '<span class="role-pill ' + roleCls + '" style="font-size:9.5px;padding:2px 6px">' + role + '</span>' +
+        '<span class="id-copy" data-copy-id="' + u.id + '" title="Click to copy your User ID" style="font-size:10.5px">' + shortId + '</span>' +
+        '</div>' +
         '</div>';
     }
   } catch (e) {}

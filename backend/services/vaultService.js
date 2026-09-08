@@ -9,19 +9,36 @@ import notificationService from "./notificationService.js";
 
 class VaultService {
   createVault({ secret, totalShares, requiredShares, expiryMinutes, ownerId, guardians, recoveryRecipient }) {
+    // Service-level guards mirror the controller's checks so any caller is safe.
+    if (typeof secret !== "string" || secret.length === 0) {
+      throw new Error("secret must be a non-empty string");
+    }
+    const tShares = Number(totalShares);
+    const rShares = Number(requiredShares);
+    if (!Number.isInteger(tShares) || tShares < 2) {
+      throw new Error("totalShares must be an integer >= 2");
+    }
+    if (!Number.isInteger(rShares) || rShares < 2 || rShares > tShares) {
+      throw new Error("requiredShares must satisfy 2 <= requiredShares <= totalShares");
+    }
+    const expiryNum = Number(expiryMinutes);
+    if (!Number.isFinite(expiryNum) || expiryNum <= 0) {
+      throw new Error("expiryMinutes must be a positive number");
+    }
+
     const vaultId = "VLT-" + crypto.randomUUID().slice(0, 8).toUpperCase();
 
     const encryptedSecret = encryptionService.encryptToString(secret);
 
-    const { shares, threshold, prime, chunkLengths } = shamirService.split(encryptedSecret, totalShares, requiredShares);
+    const { shares, threshold, prime, chunkLengths } = shamirService.split(encryptedSecret, tShares, rShares);
 
-    const expiryTimestamp = Date.now() + expiryMinutes * 60 * 1000;
+    const expiryTimestamp = Date.now() + expiryNum * 60 * 1000;
 
     const vault = {
       id: vaultId,
       ownerId,
-      totalShares,
-      requiredShares,
+      totalShares: tShares,
+      requiredShares: rShares,
       expiryTimestamp,
       recoveryRecipient,
       status: "ACTIVE",
@@ -35,6 +52,9 @@ class VaultService {
     db.vaults.push(vault);
 
     if (guardians && guardians.length > 0) {
+      if (guardians.length !== tShares) {
+        throw new Error(`Expected exactly ${tShares} guardians, received ${guardians.length}`);
+      }
       guardians.forEach((g, i) => {
         const guardianId = crypto.randomUUID();
         const shareCommitment = sha256(JSON.stringify(shares[i]));

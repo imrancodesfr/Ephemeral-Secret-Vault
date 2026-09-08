@@ -82,6 +82,14 @@ const env = {
   SMTP_USER: process.env.SMTP_USER || "",
   SMTP_PASS: process.env.SMTP_PASS || "",
   SMTP_FROM: process.env.SMTP_FROM || "ephemeral-vault@example.com",
+  ADMIN_BOOTSTRAP_EMAIL: process.env.ADMIN_BOOTSTRAP_EMAIL || "",
+  ADMIN_BOOTSTRAP_PASSWORD: process.env.ADMIN_BOOTSTRAP_PASSWORD || "",
+  // Comma-separated allowlist of browser origins that may call this API.
+  // Defaults to local development origins; tighten for any deployed site.
+  CORS_ORIGINS: (process.env.CORS_ORIGINS || "http://localhost:3000,http://127.0.0.1:3000")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
 };
 
 if (process.env.NODE_ENV !== "test") {

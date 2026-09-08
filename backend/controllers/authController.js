@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import db from "../config/database.js";
+import env from "../config/environment.js";
 import { signToken, setSessionCookie } from "../middleware/auth.js";
 
 const SCRYPT_N = 16384;
@@ -113,10 +114,14 @@ export function register(req, res) {
     });
   }
 
-  const allowedRoles = ["OWNER", "GUARDIAN", "RECIPIENT", "ADMIN"];
-  const assignedRole = role || "OWNER";
+  // Only non-privileged roles may be claimed through public self-registration.
+  // ADMIN must never be assignable here — otherwise any anonymous user could
+  // self-escalate to full admin. Provision admins via a dedicated path/env seed.
+  const allowedRoles = ["OWNER", "GUARDIAN", "RECIPIENT"];
+  const normalizedRole = typeof role === "string" ? role.toUpperCase() : null;
+  const assignedRole = normalizedRole || "OWNER";
   if (!allowedRoles.includes(assignedRole)) {
-    return res.status(400).json({ error: "Invalid role. Allowed: OWNER, GUARDIAN, RECIPIENT, ADMIN" });
+    return res.status(400).json({ error: "Invalid role. Allowed: OWNER, GUARDIAN, RECIPIENT" });
   }
 
   if (typeof walletAddress === "string" && walletAddress.length > 120) {
@@ -187,6 +192,31 @@ export function me(req, res) {
 }
 
 export function getUsers(req, res) {
+  // The vault/supply-chain flows need the user directory as an address book to
+  // pick guardians, recipients, and transfer counterparts. Only safe, non-secret
+  // fields are returned (never passwordHash). ADMIN self-registration is already
+  // blocked, so directory reads cannot be used to escalate privileges.
   const users = db.users.findAll();
-  return res.json({ users });
+  return res.json({ users: users.map(publicUser) });
+}
+
+// Seed a privileged ADMIN account at boot from ADMIN_BOOTSTRAP_EMAIL and
+// ADMIN_BOOTSTRAP_PASSWORD. Idempotent — no-ops if already present or unset.
+export function bootstrapAdmin() {
+  const email = (env.ADMIN_BOOTSTRAP_EMAIL || "").trim().toLowerCase();
+  const password = env.ADMIN_BOOTSTRAP_PASSWORD || "";
+  if (!email || !password) return false;
+  if (db.users.findByEmail(email)) return false;
+
+  db.users.push({
+    id: crypto.randomUUID(),
+    name: "Administrator",
+    email,
+    passwordHash: hashPassword(password),
+    role: "ADMIN",
+    walletAddress: null,
+    createdAt: Date.now(),
+  });
+  console.log(`[Auth] Bootstrapped ADMIN account for ${email}`);
+  return true;
 }

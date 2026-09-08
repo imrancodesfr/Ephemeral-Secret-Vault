@@ -150,7 +150,7 @@ class NotificationService {
   }
 
   notifyRecoveryCompleted(vault, recoveryId, recipientId, recipientEmail, additional = {}) {
-    this.send({
+    return this.send({
       recipientId,
       recipientEmail,
       role: "RECIPIENT",

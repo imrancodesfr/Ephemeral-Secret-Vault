@@ -51,12 +51,15 @@
         <!-- Step 3 · Guardians -->
         <section class="wizard-panel" data-step="3">
           <h3>3 · Guardians <span id="guardian-count" class="badge badge-info">0 selected</span></h3>
-          <p class="pick-note">Every selected guardian holds exactly one share. The more guardians you pick, the more resilient the vault is to lost shares.</p>
+          <div class="card" style="margin:12px 0;background:rgba(6,182,212,0.06);border-color:rgba(6,182,212,0.3)">
+            <h4 style="color:var(--cyan);margin-bottom:4px;font-size:13px">🛡 What is a Guardian?</h4>
+            <p class="dim" style="font-size:12px;line-height:1.5">A Guardian holds exactly 1 mathematical shard of your secret. A single guardian <b>cannot read or steal your secret alone</b>. You need at least 2 guardians. Each selected user will hold one share.</p>
+          </div>
           <div id="guardian-ids" class="muted"></div>
           <div id="guardian-options" class="form-group"><span class="muted">Loading users…</span></div>
           <div class="wizard-nav">
             <button class="btn btn-secondary" onclick="goStep(2)">Back</button>
-            <button class="btn btn-secondary" onclick="{ if (selected.size < 2) { toast('Select at least 2 guardians', 'error'); return; } goStep(4); }">Next: Threshold</button>
+            <button class="btn btn-secondary" onclick="goStep(4)">Next: Threshold</button>
           </div>
         </section>
 
@@ -69,6 +72,12 @@
             <p class="pick-note">Shamir Secret Sharing uses a <b>k-of-n</b> threshold. Any <b>k</b> of the <b>n</b> guardians can reconstruct the secret, even if some guardians lose their share.</p>
           </div>
           <div class="steps" id="threshold-steps"></div>
+          
+          <div class="card" style="margin:16px 0;background:rgba(16,185,129,0.06);border-color:rgba(16,185,129,0.3)">
+            <h4 style="color:var(--emerald);margin-bottom:4px;font-size:13px">🎯 What is a Recovery Recipient?</h4>
+            <p class="dim" style="font-size:12px;line-height:1.5">The Recipient is the designated beneficiary. When the dead man's switch expires, the recipient is the <b>ONLY entity who receives and views the reconstructed secret</b> once the required guardian shares are submitted.</p>
+          </div>
+
           <div class="form-group">
             <label>Recovery recipient</label>
             <select id="recoveryRecipient" class="full"></select>
@@ -114,22 +123,71 @@
     const user = requireAuth();
     let selected = new Set();
     let currentStep = 1;
+    let maxReached = 1;
     let lastResult = null;
 
     const STEPS = ['Secret', 'Expiry', 'Guardians', 'Threshold', 'Review', 'Shares'];
+
+    // Validate the step you are LEAVING before moving forward. This is the single
+    // gate for every forward move (Next buttons AND stepper clicks) so the wizard
+    // can never jump ahead without the required input.
+    function validateStep(n) {
+      if (n === 1) {
+        if (!document.getElementById('secret').value.trim()) {
+          toast('Enter the secret to protect first', 'error');
+          return false;
+        }
+        return true;
+      }
+      if (n === 2) {
+        const v = parseFloat(document.getElementById('expiryMinutes').value);
+        if (!Number.isFinite(v) || v <= 0) {
+          toast('Enter a valid expiry time greater than 0 minutes', 'error');
+          return false;
+        }
+        return true;
+      }
+      if (n === 3) {
+        if (selected.size < 2) {
+          toast('Select at least 2 guardians before continuing', 'error');
+          return false;
+        }
+        return true;
+      }
+      if (n === 4) {
+        const k = parseInt(document.getElementById('requiredShares').value, 10) || 0;
+        if (k < 2 || k > selected.size) {
+          toast('Choose a valid threshold (2 to ' + selected.size + ')', 'error');
+          return false;
+        }
+        return true;
+      }
+      return true;
+    }
 
     function renderStepper() {
       document.getElementById('stepper').innerHTML = STEPS.map((label, i) => {
         const n = i + 1;
         const cls = n === currentStep ? ' current' : (n < currentStep ? ' done' : '');
-        return '<div class="step' + cls + '" onclick="goStep(' + n + ')"><div class="step-dot">' + n + '</div>' + label + '</div>';
+        // Only steps already reached are clickable — future steps stay locked
+        // until the required input for the current step has been given.
+        const clickable = n <= maxReached;
+        const onclick = clickable ? ' onclick="goStep(' + n + ')"' : '';
+        return '<div class="step' + cls + '"' + onclick + '><div class="step-dot">' + n + '</div>' + label + '</div>';
       }).join(' | ');
     }
 
     window.goStep = function (n) {
       if (n > 5 && !lastResult) return;
       if (n < 1 || n > 6) return;
+      // Moving forward is only allowed through validates steps — never freely.
+      if (n > currentStep) {
+        for (let s = currentStep; s < n; s++) {
+          if (!validateStep(s)) return;
+        }
+      }
       currentStep = n;
+      if (n > maxReached) maxReached = n;
       document.querySelectorAll('.wizard-panel').forEach((p) => { p.style.display = (+p.dataset.step === n) ? 'block' : 'none'; });
       renderStepper();
       if (n === 5) renderReview();
@@ -144,8 +202,8 @@
       const users = res.users || [];
 
       const others = users.filter((u) => u.id !== user.id);
-      const guardianCandidates = others.filter((u) => u.role === 'GUARDIAN');
-      const recipientCandidates = others.filter((u) => u.role === 'RECIPIENT' || u.role === 'OWNER' || u.role === 'GUARDIAN');
+      const guardianCandidates = others;
+      const recipientCandidates = others;
 
       const rsel = document.getElementById('recoveryRecipient');
       rsel.innerHTML = '<option value="' + user.id + '">' + user.name + ' (me, ' + user.role + ') — default recipient</option>' +
@@ -155,12 +213,15 @@
 
       const gbox = document.getElementById('guardian-options');
       gbox.innerHTML = guardianCandidates.length
-        ? guardianCandidates.map((u) =>
-            '<label class="check-row" style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer">' +
-            '<input type="checkbox" class="guardian-cb" value="' + u.id + '" data-name="' + u.name + '">' +
-            '<span>' + u.name + ' (' + u.email + ') — ' + u.role + '</span>' +
-            '</label>').join('')
-        : '<span class="muted">No users with role Guardian yet. Register guardians first (login.html → Register).</span>';
+        ? guardianCandidates.map((u) => {
+            const roleCls = u.role === 'GUARDIAN' ? 'role-guardian' : (u.role === 'OWNER' ? 'role-owner' : 'role-recipient');
+            return '<label class="check-row" style="display:flex;align-items:center;gap:10px;padding:8px 10px;margin-bottom:6px;cursor:pointer;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:6px">' +
+              '<input type="checkbox" class="guardian-cb" value="' + u.id + '" data-name="' + u.name + '">' +
+              '<span style="flex:1;color:#fff;font-weight:600">' + u.name + ' <span class="muted" style="font-size:12px">(' + u.email + ')</span></span>' +
+              '<span class="role-pill ' + roleCls + '" style="font-size:9.5px">' + u.role + '</span>' +
+              '</label>';
+          }).join('')
+        : '<span class="muted">No other registered users yet. Register users first (login.html → Register).</span>';
 
       document.querySelectorAll('.guardian-cb').forEach((cb) => {
         cb.addEventListener('change', () => {
