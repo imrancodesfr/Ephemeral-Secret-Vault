@@ -4,7 +4,7 @@ A blockchain-based system for securely storing and recovering sensitive informat
 
 ## Core Flow
 
-```
+```     
 Secret → AES Encryption → Shamir Secret Sharing → Multiple Guardian Shares
   → Blockchain-controlled Vault → Owner Renewal → Expiry / Dead Man's Switch
   → Recovery Mode → Required Guardian Shares → Shamir Reconstruction
