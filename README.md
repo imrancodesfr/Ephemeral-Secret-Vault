@@ -96,6 +96,15 @@ curl http://localhost:3000/api/health
 curl http://localhost:3000/api/blockchain/validate
 ```
 
+### Tests (with the server running)
+
+```bash
+node tools/validation-test.mjs      # 52 API validation tests
+node tools/e2e-recovery-test.mjs    # 27 recovery-regression tests
+```
+
+A full verification checklist (including the 4 blockchain-integrity checks) lives in [`VALIDATION.md`](VALIDATION.md).
+
 ## Project Structure
 
 ```
@@ -239,7 +248,7 @@ These layers are included to demonstrate blockchain interoperability, but the **
 
 ## Known Limitations (honest notes for review)
 
-- Tokens are generated at register/login, but the demo does not yet enforce an auth middleware on every route (auth headers are forwarded as `userId`/`ownerId` in request bodies).
+- Auth and session identity: an HS256 JWT `requireAuth` middleware (`backend/middleware/auth.js`) guards the vault, recovery, blockchain, mining, notifications, documents, supply-chain, voting, expiry and fabric routes. Identity is taken from the verified token, never from client-supplied `ownerId`/`from`/`actor` fields. Tests that cover this are under `tools/`.
 - The Ethereum contracts compile, but the live demo drives the custom blockchain + Fabric simulation so the project runs anywhere without external services. Ganache is optional.
 - Secret recovery reconstructs the plaintext for the authorized recipient by design — the plaintext is never stored, only transiently returned at the moment of authorized recovery.
 
