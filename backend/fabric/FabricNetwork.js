@@ -77,9 +77,13 @@ class FabricNetwork {
   }
 
   getStatus() {
+    const orgNames = [];
+    networkConfig.organizations.forEach((o) => { if (!orgNames.includes(o.name)) orgNames.push(o.name); });
+    this.peers.forEach((p) => { if (!orgNames.includes(p.organization)) orgNames.push(p.organization); });
     return {
       networkName: networkConfig.name,
       version: networkConfig.version,
+      orgs: orgNames,
       peerCount: this.peers.length,
       channelCount: this.channels.length,
       chaincodeCount: this.chaincodes.length,

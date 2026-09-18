@@ -8,7 +8,8 @@ export async function initWeb3() {
   try {
     web3 = new Web3(env.GANACHE_URL);
     accounts = await web3.eth.getAccounts();
-    return { connected: true, accounts, chainId: await web3.eth.getChainId() };
+    const chainId = await web3.eth.getChainId();
+    return { connected: true, accounts, chainId: Number(chainId) };
   } catch (error) {
     return { connected: false, error: error.message };
   }
@@ -25,7 +26,8 @@ export function getAccounts() {
 export async function getBalance(address) {
   if (!web3) return null;
   const balance = await web3.eth.getBalance(address);
-  return web3.utils.fromWei(balance, "ether");
+  const eth = web3.utils.fromWei(balance, "ether");
+  return typeof eth === "bigint" ? eth.toString() : eth;
 }
 
 export async function sendTransaction({ from, to, value, gas = 21000 }) {

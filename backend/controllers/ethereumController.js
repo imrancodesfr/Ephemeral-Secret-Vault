@@ -57,7 +57,17 @@ export async function getEthereumStatus(req, res) {
     const status = await getStatus();
     return res.json(status);
   } catch (error) {
-    return res.json({ connected: false, simulation: env.simulationMode, deployed: false, error: error.message, contracts: CONTRACT_FILES });
+    return res.json({
+      connected: false,
+      simulation: env.simulationMode,
+      deployed: false,
+      error: error.message,
+      contracts: CONTRACT_FILES.map((f) => ({
+        file: f,
+        purpose: CONTRACT_PURPOSE[f],
+        sourcePath: path.join(__dirname, "..", "ethereum", "contracts", f),
+      })),
+    });
   }
 }
 
