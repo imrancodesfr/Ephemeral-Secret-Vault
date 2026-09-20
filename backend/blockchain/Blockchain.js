@@ -82,15 +82,13 @@ class Blockchain {
   }
 
   isChainValid() {
-    const prefix = "0".repeat(this.difficulty);
-
     if (this.chain.length === 0) return true;
 
     // Genesis integrity: must reference the void previous hash and carry valid PoW.
     const genesis = this.chain[0];
     if (genesis.index !== 0 || genesis.previousHash !== "0") return false;
     if (genesis.hash !== genesis.calculateHash()) return false;
-    if (!genesis.hash.startsWith(prefix)) return false;
+    if (!genesis.hash.startsWith("0".repeat(genesis.difficulty))) return false;
     if (new MerkleTree(genesis.transactions).getRoot() !== genesis.merkleRoot) return false;
 
     for (let i = 1; i < this.chain.length; i++) {
@@ -100,8 +98,10 @@ class Blockchain {
       if (current.hash !== current.calculateHash()) return false;
       if (current.previousHash !== previous.hash) return false;
 
-      // The hash must satisfy the configured proof-of-work difficulty.
-      if (!current.hash.startsWith(prefix)) return false;
+      // The hash must satisfy the proof-of-work difficulty the block was mined at.
+      // Validating per-block means changing the difficulty never retroactively
+      // invalidates blocks mined under an earlier difficulty setting.
+      if (!current.hash.startsWith("0".repeat(current.difficulty))) return false;
 
       // The stored merkle root must match a recomputation over the block's transactions.
       const expectedRoot = new MerkleTree(current.transactions).getRoot();
